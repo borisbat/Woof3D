@@ -4,6 +4,7 @@ require files
 require app
 
 enum SoundName
+    ACHTUNG =                0
 /*
 [I] sound 0 offset 0x116a00 of size 4096
 [I] sound 1 offset 0x117a00 of size 1900

@@ -75,21 +75,14 @@ def drawThings ( var bmp:Bitmap8 )
             let ofs = Y * 64 + X
             if !visibility_plane[ofs]
                 continue
-            if object_plane[ofs].category==Category nothing && enemy_plane[ofs].category==Category nothing
-                continue
-            // player relative coordinates
-            let prc = getPlayerRelativeCoordinates(X,Y)
-            // extra clipping
-            if prc.rx < player.radius
-                // thing is behind the screen
-                continue
-            elif abs(prc.ry) > prc.rx + 1.
-                // thing is out of field of view
-                continue
             if object_plane[ofs].category != Category nothing
-                drawThing(prc.rx,prc.ry,prc.orx,prc.ory,object_plane[ofs],bmp)
+                var prc = getPlayerRelativeCoordinates(X,Y)
+                if prc.rx>player.radius && abs(prc.ry)<prc.rx + 1.
+                    drawThing(prc.rx,prc.ry,prc.orx,prc.ory,object_plane[ofs],bmp)
             if enemy_plane[ofs].category != Category nothing
-                drawThing(prc.rx,prc.ry,prc.orx,prc.ory,enemy_plane[ofs],bmp)
+                var prc = getPlayerRelativeCoordinates(enemy_plane[ofs].x,enemy_plane[ofs].y)
+                if prc.rx>player.radius && abs(prc.ry)<prc.rx + 1.
+                    drawThing(prc.rx,prc.ry,prc.orx,prc.ory,enemy_plane[ofs],bmp)
 
 def getEntityAngle( Direction : float2 ) : int
     var EntityAngle = floori((8.0f * atan2(Direction.y, Direction.x) / (2.0f * PI)) + 0.5f)
@@ -107,7 +100,7 @@ def drawThing(rx,ry,orx,ory:float; OBJ:Entity; var bmp:Bitmap8 )
     if OBJ.orientable && (OBJ.animation==null || OBJ.animation.orientable)
         let PlayerAngle = getEntityAngle(float2(orx,ory))
         var Angle = getEntityAngle(float2(OBJ.dox, OBJ.doy))
-        index = OBJ.spriteIndex + (Angle - PlayerAngle + 8) % 8
+        index = OBJ.spriteIndex + (Angle - PlayerAngle + 12) % 8
     drawSprite(tx, ty, th, rx, Sprites[index], bmp)
 
 [jit,hint(unsafe_range_check,noalias=tex,noalias=bmp)]

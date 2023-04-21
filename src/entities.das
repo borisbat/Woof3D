@@ -44,7 +44,7 @@ def isKey ( m1:int )
 def isHpRestore ( m1:int )
     return m1==29 || m1==47 || m1==48
 
-def getEntityDirection(dm:int; var dx,dy:float& )
+def getPlayerDirection(dm:int; var dx,dy:float& )
     if dm==0
         dx = 0.0;   dy = -1.0
     elif dm==1
@@ -53,6 +53,16 @@ def getEntityDirection(dm:int; var dx,dy:float& )
         dx = 0.0;   dy = 1.0
     elif dm==3
         dx = -1.0;  dy = 0.0
+
+def getEntityDirection(dm:int; var dx,dy:float& )
+    if dm==0
+        dx = 1.0;   dy = 0.0
+    elif dm==1
+        dx = 0.0;   dy = -1.0
+    elif dm==2
+        dx = -1.0;  dy = 0.0
+    elif dm==3
+        dx = 0.0;   dy = 1.0
 
 def isPlayer(m1:int)
     return m1>=19 && m1<=22

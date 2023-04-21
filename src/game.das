@@ -13,10 +13,16 @@ require fio
 
 var frame_time = 0.66
 
+let CHEAT_DISABLE_ENEMIES = false
+
+let AGRO_TIME = 20. // they stay agro even if they can't see you for that many seconds
+
 let LEVEL_FADE_TIME = 1.
 let LEVEL_FADE_FACTOR = 1.0 / LEVEL_FADE_TIME / 60.
 
 let PAIN_SOUND_RADIUS = 10.
+
+let AGRO_SOUND_RADIUS = 10.
 
 let DOOR_SOUND_PLAYBACK_RATE = 18000
 let DOOR_SOUND_RADIUS = 10.0     // how far away door sound can be heard (in tiles)
@@ -75,6 +81,7 @@ struct public Entity
     animation   : Animation?
     orientable  : bool
     dox, doy    : float
+    x, y        : float
 
 var public object_plane : Entity[64*64]
 
@@ -88,19 +95,24 @@ enum EnemyCategory
 struct public EnemyClass
     enemyCategory : EnemyCategory
     spriteIndex : int
+    runSprites : array<int>
     deathSprites : array<int>
     damageSprites : array<int>
     attackSprites : array<int>
     orientable : bool
-    radius : float
+// movement and location
+    radius : float          // how big enemy is
+    speed : float           // how fast enemy moves
 // everything hp
-    hp : int
+    hp : int                // how much hp enemy has
 // everything attack
-    attackDamage : int
-    attackFireRate : float
-    attackDistance : float
+    attackDamage : int      // how much damage it does on each attack
+    attackFireRate : float  // how fast it attacks
+    attackDistance : float  // how far away from player enemy can attack
+    comfortDistance : float // how far away from player enemy stops chasing
     attackDelay : float2    // min, max
-    attackSound : SoundName
+    attackSound : SoundName // sound played when enemy attacks
+    agroSound : SoundName   // sound played when enemy sees player
 
 // weaponFireRate : float[4] = [[float 2.5; 2.5; 7.1; 14.2]]
 
@@ -108,60 +120,80 @@ let enemyClasses <- [[EnemyClass
 // guard
     hp = 25,
     radius = .25,
+    speed = 0.065 * 0.35,
     attackDamage = 15,
+    comfortDistance = 3.,
     attackDistance = 5.,
     attackFireRate = 2.5,
     attackDelay = float2(1., 2.),
     attackSound = SoundName ATKPISTOLSND,
+    agroSound = SoundName ACHTUNG,
     spriteIndex = 50,
+    runSprites <- [{auto 58; 66; 74}],
     deathSprites <- [{auto 90; 91; 92; 93; 95}],
     damageSprites <- [{auto 90; 94; 50}],
     attackSprites <- [{auto 96; 97; 98; 97; 50}];
 // dog
     hp = 1,
     radius = .3,
+    speed = 0.065 / 2.,
     attackDamage = 10,
     attackDistance = 1.5,
+    comfortDistance = 1.5,
     attackFireRate = 3.5,
     attackDelay = float2(0.2, 0.5),
-    attackSound = SoundName DOGBARK,
+    attackSound = SoundName DOGATTACKSND,
+    agroSound = SoundName DOGBARK,
     spriteIndex = 99,
+    runSprites <- [{auto 107; 115; 123}],
     deathSprites <- [{auto 131; 132; 133; 134}],
     damageSprites <- [{auto 131; 99}],
     attackSprites <- [{auto 135; 136; 137; 136; 99}];
 // officer
     hp = 50,
     radius = .3,
-    attackDamage = 45,
+    speed = 0.065 * 0.5,
+    attackDamage = 30,
     attackDistance = 7.,
+    comfortDistance = 5.,
     attackFireRate = 2.5,
     attackDelay = float2(0.5, 1.),
     attackSound = SoundName ATKPISTOLSND,
+    agroSound = SoundName GUTENTAGSND,
     spriteIndex = 238,
+    runSprites <- [{auto 246; 254; 262}],
     deathSprites <- [{auto 279; 280; 281; 283; 284}],
     damageSprites <- [{auto 279; 282; 238}],
     attackSprites <- [{auto 285; 286; 287; 286; 238}];
 // ss
     hp = 50,
     radius = .3,
-    attackDamage = 18, // 45,
+    speed = 0.065 * 0.5,
+    attackDamage = 45,
     attackDistance = 7.,
-    attackFireRate = 7.1,
-    attackDelay = float2(0.1, 0.3),
-    attackSound = SoundName ATKMACHINEGUNSND,
+    comfortDistance = 3.,
+    attackFireRate = 2.5,
+    attackDelay = float2(0.8, 1.5),
+    attackSound = SoundName SSFIRESND,
+    agroSound = SoundName SCHUTZADSND,
     spriteIndex = 138,
+    runSprites <- [{auto 146; 154; 162}],
     deathSprites <- [{auto 179; 180; 181; 183}],
     damageSprites <- [{auto 179; 182; 138}],
     attackSprites <- [{auto 184; 185; 186; 186; 138}];
 // mutant
     hp = 45,
     radius = .4,
+    speed = 0.065 * 0.35,
     attackDamage = 45,
-    attackDistance = 7.,
+    attackDistance = 3.,
+    comfortDistance = 1.5,
     attackFireRate = 2.5,
-    attackDelay = float2(0.5, 1.),
+    attackDelay = float2(1., 2.),
     attackSound = SoundName ATKGATLINGSND,
+    agroSound = SoundName MUTTISND,
     spriteIndex = 187,
+    runSprites <- [{auto 195; 203; 211}],
     deathSprites <- [{auto 228; 229; 230; 232; 233}],
     damageSprites <- [{auto 228; 231; 187}],
     attackSprites <- [{auto 234; 235; 236; 237; 236; 187}]
@@ -173,6 +205,8 @@ struct public Enemy : Entity
     patrolling : bool
     health : int = 100
     attackTimer : float = 0.
+    agroTimer : float = 0.
+    running : bool = false
 
 var public enemy_plane : Enemy[64*64]
 
@@ -194,6 +228,7 @@ let random_death_snd = [[SoundName
 
 def takeDamage ( var self:Enemy; DAMAGE:int )
     with self
+        agroTimer = AGRO_TIME   // getting shot sets up agro timer
         health -= DAMAGE
         if health <= 0
             category = Category deadBody
@@ -237,9 +272,10 @@ def dropLoot ( X,Y : int; loot:Collectible; chanceToDrop:float ) : bool
         level.plane1[ofs] = uint16(m1)
     return true
 
-def getPlayerRelativeCoordinates ( X,Y : int ) : tuple<rx:float;ry:float;orx:float;ory:float>
-    let ox = float(X) + 0.5
-    let oy = float(Y) + 0.5
+def getPlayerRelativeCoordinates ( X,Y:int ) : tuple<rx:float;ry:float;orx:float;ory:float>
+    return getPlayerRelativeCoordinates(float(X)+0.5,float(Y)+0.5)
+
+def getPlayerRelativeCoordinates ( ox,oy:float ) : tuple<rx:float;ry:float;orx:float;ory:float>
     let orx = ox - player.x
     let ory = oy - player.y
     let rx =  orx * player.dx + ory * player.dy
@@ -479,42 +515,46 @@ def switchWeapon ( var self:Player; WEAPON_TYPE:WeaponType )
         weaponType = WEAPON_TYPE
         weaponSprite = 416 + int(weaponType) * 5
 
-def getEnemyPosition ( x,y:int )
-    return float2(x,y) + float2(0.5)
+def getEnemyPosition ( enemy:Enemy ) : float2
+    return float2(enemy.x,enemy.y)
 
 def canMoveTo ( self:Player; X,Y:float )
-    with self
-        let r = radius
-        let fx = X % 1.
-        let ix = floori(X)
-        let fy = Y % 1.
-        let iy = floori(Y)
-        if collision_plane[iy*64+ix]
+    let ix = floori(X)
+    let iy = floori(Y)
+    let ofs = iy*64+ix
+    if enemy_plane[ofs].category == Category enemy
+        let erad = enemyClasses[int(enemy_plane[ofs].enemyCategory)].radius
+        let dist = length(getEnemyPosition(enemy_plane[ofs]) - float2(X,Y))
+        if dist < self.radius + erad
             return false
-        if enemy_plane[iy*64+ix].category == Category enemy
-            let erad = enemyClasses[int(enemy_plane[iy*64+ix].enemyCategory)].radius
-            let dist = length(getEnemyPosition(ix,iy) - float2(X,Y))
-            if dist < radius + erad
-                return false
-        if fx < r
-            if collision_plane[iy*64+ix-1]
-                return false
-            if fy < r && collision_plane[(iy-1)*64+ix-1]
-                return false
-            if fy > 1.-r && collision_plane[(iy+1)*64+ix-1]
-                return false
-        if fx > 1.-r
-            if collision_plane[iy*64+ix+1]
-                return false
-            if fy < r && collision_plane[(iy-1)*64+ix+1]
-                return false
-            if fy > 1.-r && collision_plane[(iy+1)*64+ix+1]
-                return false
-        if fy < r && collision_plane[(iy-1)*64+ix]
+    return canMoveTo(X,Y,self.radius)
+
+def canMoveTo ( X,Y,r:float )
+    let fx = X % 1.
+    let ix = floori(X)
+    let fy = Y % 1.
+    let iy = floori(Y)
+    if collision_plane[iy*64+ix]
+        return false
+    if fx < r
+        if collision_plane[iy*64+ix-1]
             return false
-        if fy > 1.-r && collision_plane[(iy+1)*64+ix]
+        if fy < r && collision_plane[(iy-1)*64+ix-1]
             return false
-        return true
+        if fy > 1.-r && collision_plane[(iy+1)*64+ix-1]
+            return false
+    if fx > 1.-r
+        if collision_plane[iy*64+ix+1]
+            return false
+        if fy < r && collision_plane[(iy-1)*64+ix+1]
+            return false
+        if fy > 1.-r && collision_plane[(iy+1)*64+ix+1]
+            return false
+    if fy < r && collision_plane[(iy-1)*64+ix]
+        return false
+    if fy > 1.-r && collision_plane[(iy+1)*64+ix]
+        return false
+    return true
 
 def move ( var self:Player; length,sideways:float )
     with self
@@ -679,7 +719,7 @@ def shoot ( var self:Player )
                         continue
                     if enemy_plane[ofs].category != Category enemy
                         continue
-                    var prc = getPlayerRelativeCoordinates(X, Y)
+                    var prc = getPlayerRelativeCoordinates(enemy_plane[ofs].x, enemy_plane[ofs].y)
                     if prc.rx < 0.
                         continue
                     if prc.rx >= d
@@ -896,7 +936,7 @@ def setupLevel ( index:int )
                 // player
                 player.x = float(x) + 0.5
                 player.y = float(y) + 0.5
-                getEntityDirection(m1-19,player.dx,player.dy)   // note. why is it dx,dy?
+                getPlayerDirection(m1-19,player.dx,player.dy)
             elif isProp(m1)
                 object_plane[x + y * 64] = [[Entity
                     category = Category prop,
@@ -914,7 +954,7 @@ def setupLevel ( index:int )
                     category = Category prop,
                     spriteIndex = 95
                 ]]
-            elif isEnemy(m1)
+            elif !CHEAT_DISABLE_ENEMIES && isEnemy(m1)   // disabled enemies for now
                 var category : EnemyCategory
                 var patrolling = false
                 var orientable = true
@@ -941,9 +981,10 @@ def setupLevel ( index:int )
                 // to_log(LOG_INFO, "{x} {y} {m1} {category} {patrolling} {orientable}\n")
                 // todo: add bosses
                 var edx, edy : float
-                getEntityDirection(m1 & 3,edy,edx)
+                getEntityDirection(m1 & 3,edx,edy)
                 enemy_plane[x + y * 64] = [[Enemy
                     cx = x, cy = y,
+                    x = float(x) + 0.5, y = float(y) + 0.5,
                     dox = edx, doy = edy,
                     category = Category enemy,
                     enemyCategory = category,
@@ -984,7 +1025,7 @@ def getEntityOrientation(dx,dy:float)
         return dy > 0. ? 2 : 0
 
 def rotateTowardsPlayer ( var self:Enemy )
-    let dxy = normalize((float2(self.cx,self.cy)+float2(0.5)) - float2(player.x,player.y))
+    let dxy = normalize(float2(player.x,player.y) - (float2(self.cx,self.cy)+float2(0.5)))
     self.dox = dxy.x
     self.doy = dxy.y
 
@@ -1009,27 +1050,120 @@ def attack ( var self:Enemy )
         assume eclass = enemyClasses[int(enemyCategory)]
         let delay = eclass.attackDelay
         attackTimer = delay.x + random_float(seed)*(delay.y-delay.x)
+        running = false
         let fireRate = eclass.attackFireRate / 16.
         self |> startAnimation(new Animation(eclass.attackSprites,false,false,fireRate))
         play_game_sound_2d(eclass.attackSound, float2(cx,cy)+float2(0.5), PAIN_SOUND_RADIUS)
         rotateTowardsPlayer(self)
         self |> shoot()
 
-def updateThings
+def canMoveTo ( self:Enemy; X,Y:float )
+    with self
+        let ix = floori(X)
+        let iy = floori(Y)
+        let radius = enemyClasses[int(enemyCategory)].radius
+        if ix!=cx || iy!=cy
+            let dplayer = length(float2(player.x,player.y) - float2(X,Y))
+            let pcx = floori(player.x)
+            let pcy = floori(player.y)
+            if (ix==pcx && iy==pcy) || (dplayer < enemyClasses[int(enemyCategory)].radius + player.radius)
+                // can't move into player slot, period
+                return false
+            let ofs = iy*64+ix
+            if enemy_plane[ofs].category == Category enemy
+                let erad = enemyClasses[int(enemy_plane[ofs].enemyCategory)].radius
+                let dist = length(getEnemyPosition(enemy_plane[ofs]) - float2(X,Y))
+                if dist < radius + erad
+                    return false
+        return canMoveTo(X,Y,radius)
+
+def move ( var self:Enemy; length,sideways:float )
+    with self
+        let oldx = x
+        let oldy = y
+        let oldcx = cx
+        let oldcy = cy
+        let X = x + dox * length - doy * sideways
+        let Y = y + doy * length + dox * sideways
+        if self |> canMoveTo(X, y)
+            x = X
+        if self |> canMoveTo(x, Y)
+            y = Y
+        let newcx = floori(x)
+        let newcy = floori(y)
+        // we can't move into player
+        let dplayer = length(float2(player.x,player.y) - float2(x,y))
+        let pcx = floori(player.x)
+        let pcy = floori(player.y)
+        if (newcx==pcx && newcy==pcy) || (dplayer < enemyClasses[int(enemyCategory)].radius + player.radius)
+            x = oldx
+            y = oldy
+            return
+        // we can't move into another enemy
+        if newcx != cx || newcy != cy
+            if enemy_plane[newcx + newcy*64].category != Category nothing
+                x = oldx
+                y = oldy
+                return
+            // we move it to the new slot
+            enemy_plane[newcx + newcy * 64] = enemy_plane[oldcx + oldcy * 64]
+            enemy_plane[oldcx + oldcy * 64].category = Category nothing
+            enemy_plane[newcx + newcy * 64].cx = newcx
+            enemy_plane[newcx + newcy * 64].cy = newcy
+
+def update ( var self:Enemy )
+    with self
+        attackTimer = max ( attackTimer - 1. / 60. * frame_time, 0. )
+        agroTimer = max ( agroTimer - 1. / 60. * frame_time, 0. )
+        // agro resets if we see the player regardless of what we are doing
+        if visibility_plane[cx + cy * 64]   // player sees us, so we may (or may not) be able to see them
+            let xy = float2(cx,cy) + float2(0.5)
+            var dxy = normalize(float2(player.x,player.y) - xy)
+            var angle = dot(dxy,float2(dox,doy))
+            if angle >= 0.1
+                if agroTimer == 0.
+                    let agroSound = enemyClasses[int(enemyCategory)].agroSound
+                    play_game_sound_2d(agroSound, xy, AGRO_SOUND_RADIUS)
+                agroTimer = AGRO_TIME
+        if running
+            if animation == null
+                self |> startAnimation(new Animation(enemyClasses[int(enemyCategory)].runSprites,true,true))
+            rotateTowardsPlayer(self)
+            self |> move(enemyClasses[int(enemyCategory)].speed,0.)
+        if animation == null || running
+            if agroTimer!=0. && attackTimer==0. && player.health>0 && visibility_plane[cx + cy * 64]
+                // we try to shoot, if we are at the right distance
+                let dist = length(float2(player.x,player.y) - getEnemyPosition(self))
+                let attackDistance = enemyClasses[int(enemyCategory)].attackDistance
+                if dist>0. && dist<=attackDistance
+                    self |> attack()
+                    return
+            if agroTimer!=0. && player.health>0 && visibility_plane[cx + cy * 64]
+                // we rotate towards player
+                rotateTowardsPlayer(self)
+                let dist = length(float2(player.x,player.y) - getEnemyPosition(self))
+                let comfortDistance = enemyClasses[int(enemyCategory)].comfortDistance
+                if dist > comfortDistance
+                    // if we too far, we run
+                    running = true
+                else
+                    // if we comfortable, we do nada
+                    spriteIndex = enemyClasses[int(enemyCategory)].spriteIndex
+                    animation = null
+                    running = false
+            if agroTimer==0.
+                // if we are not agroed, we just stand
+                spriteIndex = enemyClasses[int(enemyCategory)].spriteIndex
+                animation = null
+                running = false
+
+def updateEnemies
     for enemy in enemy_plane
         if enemy.category == Category nothing
             continue
         // very basic AI
         if enemy.category == Category enemy
-            enemy.attackTimer = max ( enemy.attackTimer - 1. / 60. * frame_time, 0. )
-            if enemy.animation == null && enemy.attackTimer == 0. && player.health > 0
-                if visibility_plane[enemy.cx + enemy.cy * 64]   // player sees us, so we may (or may not) be able to see them
-                    let xy = float2(enemy.cx,enemy.cy) + float2(0.5)
-                    var dxy = float2(player.x,player.y) - xy
-                    let dist = length(dxy)
-                    let attackDistance = enemyClasses[int(enemy.enemyCategory)].attackDistance
-                    if dist>0. && dist<=attackDistance
-                        enemy |> attack()
+            enemy |> update()
         // animation
         if enemy.animation != null
             enemy.animation.timer += enemy.animation.rate * frame_time
@@ -1128,6 +1262,7 @@ def updatePlayer
         player.hasWeapon[int(WeaponType machineGun)] = true
         player.hasWeapon[int(WeaponType chainGun)] = true
         player.ammo = 199
+        player.health = 200
     if is_key_pressed(VK_F2)
         fopen("{get_das_root()}/temp/player.json","wb") <| $ ( f )
             if f != null
@@ -1151,17 +1286,19 @@ def updatePlayer
                     player.dy = loc.dy
                     to_log(LOG_INFO,"player at {player.x} {player.y} {player.dx} {player.dy}\n")
     if is_key_pressed(VK_F9)
+        sleep(100u)
         // spawn an enemy at 34-60
         let X = 34
         let Y = 60
-        var category = EnemyCategory ss
+        var category = EnemyCategory guard
         if enemy_plane[X + Y * 64].category == Category nothing
             enemy_plane[X + Y * 64] = [[Enemy
                 cx = X, cy = Y,
+                x = float(X) + 0.5, y = float(Y) + 0.5,
                 dox = 1., doy = 0.,
                 category = Category enemy,
                 enemyCategory = category,
-                patrolling = false,
+                patrolling = true,
                 spriteIndex = enemyClasses[int(category)].spriteIndex,
                 health = enemyClasses[int(category)].hp,
                 orientable = true
@@ -1183,5 +1320,5 @@ def public updateGame(dt:float)
     updateHud()
     updatePlayer()
     updateTimers()
-    updateThings()
+    updateEnemies()
 

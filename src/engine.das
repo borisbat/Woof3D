@@ -92,7 +92,6 @@ def drawThings ( var bmp:Bitmap8 )
                 drawThing(prc.rx,prc.ry,prc.orx,prc.ory,enemy_plane[ofs],bmp)
 
 def getEntityAngle( Direction : float2 ) : int
-    // var Direction = Position - Player.Position
     var EntityAngle = floori((8.0f * atan2(Direction.y, Direction.x) / (2.0f * PI)) + 0.5f)
     if EntityAngle < 0
         EntityAngle = 8 - ((-EntityAngle) & 7)
@@ -218,6 +217,51 @@ def drawHUDNum(x,y:int; num:int; var bmp:Bitmap8 )
     for Ch,i in txt,count()
         drawHUDElement(x+i*8,y,8,16,Pictures[Ch-'0'+105],bmp)
 
+def getHUDCharSpriteIndex ( chu:int )
+    if chu==':'
+        return 50
+    elif chu>='0' && chu<='9'
+        return chu-'0'+51
+    elif chu=='%'
+        return 61
+    elif chu>='A' && chu<='Z'
+        return chu-'A'+62
+    elif chu>='a' && chu<='z'
+        return chu-'a'+62
+    elif chu=='!'
+        return 88
+    elif chu==39    // '
+        return 89
+    else
+        return 0
+
+def getHUDTextDim(text:string) : tuple<width:int;height:int>
+    var X = 0
+    var H = 0
+    for chu in text
+        if chu==' '
+            X += 8
+            continue
+        var index = getHUDCharSpriteIndex(chu)
+        if index==0
+            continue
+        H = max(H,Pictures[index].height)
+        X += Pictures[index].width
+    return [[auto X,H]]
+
+def drawHUDText(x,y:int; text:string; var bmp:Bitmap8 )
+    var X = x
+    for chu in text
+        if chu==' '
+            X += 8
+            continue
+        var index = getHUDCharSpriteIndex(chu)
+        if index==0
+            continue
+        let W = Pictures[index].width
+        drawHUDElement(X,y,W,Pictures[index].height,Pictures[index],bmp)
+        X += W
+
 def drawHUD ( var bmp:Bitmap8 )
     // health head (24x32)
     var frame = 0
@@ -227,7 +271,7 @@ def drawHUD ( var bmp:Bitmap8 )
         frame = 137 // >100%
     else
         let hpIndex = floori(6.*clamp(1.-playerHealth,0.,1.))
-        frame = floori(hudTime * 3.) + hpIndex*3 + 115
+        frame = floori(playerHoodTime * 3.) + hpIndex*3 + 115
     drawHUDElement(1,200-33,24,32,Pictures[frame],bmp)
     // gold and silver keys (8x16)
     if player.goldKey
@@ -236,6 +280,10 @@ def drawHUD ( var bmp:Bitmap8 )
         drawHUDElement(1+24+8,200-33,8,16,Pictures[103],bmp)
     // ammo
     drawHUDNum(1+24,200-17,player.ammo,bmp)
+    // hud
+    if !empty(hudMessage)
+        let dim = getHUDTextDim(hudMessage)
+        drawHUDText(160-dim.width/2,2,hudMessage,bmp)
 
 def public draw ( level:Level; var bmp:Bitmap8 )
     hudFactor = max(float(bmp.size.y)/200.,1.)

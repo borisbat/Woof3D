@@ -28,8 +28,19 @@ let SHOT_SOUND_RADIUS = 20.
 
 // hud
 
-var hudTime = 0.
+var playerHoodTime = 0.
 var playerHealth = 1.
+
+var hudMessage = ""
+var hudMessageTime = 0.
+
+def hudText ( text:string; time:float )
+    hudMessage = text
+    hudMessageTime = time
+
+def clearHud
+    hudMessage = ""
+    hudMessageTime = 0.
 
 //
 
@@ -133,10 +144,10 @@ let enemyClasses <- [[EnemyClass
 // ss
     hp = 50,
     radius = .3,
-    attackDamage = 45,
+    attackDamage = 18, // 45,
     attackDistance = 7.,
     attackFireRate = 7.1,
-    attackDelay = float2(0.2, 0.5),
+    attackDelay = float2(0.1, 0.3),
     attackSound = SoundName ATKMACHINEGUNSND,
     spriteIndex = 138,
     deathSprites <- [{auto 179; 180; 181; 183}],
@@ -181,22 +192,50 @@ let random_death_snd = [[SoundName
     SoundName DEATHSCREAM8SND;
 	SoundName DEATHSCREAM9SND]]
 
-def takeDamage ( var enemy:Enemy; X,Y:int; DAMAGE:int )
-    enemy.health -= DAMAGE
-    if enemy.health <= 0
-        enemy.category = Category deadBody
-        die(enemy)
-        play_game_sound_2d(random_death_snd[ random_int(seed) % 3], float2(X,Y)+float2(0.5), PAIN_SOUND_RADIUS)
-    else
-        if enemy.animation == null
-            enemy |> startAnimation(new Animation(enemyClasses[int(enemy.enemyCategory)].damageSprites,false,false))
-        play_game_sound_2d(random_take_damage_snd[ random_int(seed) % 3], float2(X,Y)+float2(0.5), PAIN_SOUND_RADIUS)
-        rotateTowardsPlayer(enemy)
+def takeDamage ( var self:Enemy; DAMAGE:int )
+    with self
+        health -= DAMAGE
+        if health <= 0
+            category = Category deadBody
+            self |> die()
+        else
+            if animation == null
+                self |> startAnimation(new Animation(enemyClasses[int(enemyCategory)].damageSprites,false,false))
+            play_game_sound_2d(random_take_damage_snd[ random_int(seed) % 3], float2(cx,cy)+float2(0.5), PAIN_SOUND_RADIUS)
+            self |> rotateTowardsPlayer()
 
-def die ( var enemy:Enemy )
-    enemy.health = -100
-    enemy.orientable = false
-    enemy |> startAnimation(new Animation(enemyClasses[int(enemy.enemyCategory)].deathSprites))
+def die ( var self:Enemy )
+    with self
+        health = -100
+        orientable = false
+        self |> startAnimation(new Animation(enemyClasses[int(enemyCategory)].deathSprites))
+        play_game_sound_2d(random_death_snd[ random_int(seed) % 3], float2(cx,cy)+float2(0.5), PAIN_SOUND_RADIUS)
+        if enemyCategory==EnemyCategory dog
+            // self |> dropLoot(cx,cy,Collectible dogBone)
+            pass
+        elif enemyCategory==EnemyCategory guard
+            dropLoot(cx,cy,Collectible AmmoClip, player.ammo < 8 ? 1. : 0.25)
+        elif enemyCategory==EnemyCategory officer
+            dropLoot(cx,cy,Collectible AmmoClip, player.ammo < 8 ? 1. : 0.5)
+        elif enemyCategory==EnemyCategory ss
+            dropLoot(cx,cy,Collectible MachineGun, 1.)
+        elif enemyCategory==EnemyCategory mutant
+            dropLoot(cx,cy,Collectible Chaingun, 1.)
+
+def dropLoot ( X,Y : int; loot:Collectible; chanceToDrop:float ) : bool
+    let drop = random_float(seed)
+    if drop <= chanceToDrop
+        // drop ammo clip
+        let ofs = X+Y*64
+        if object_plane[ofs].category != Category nothing
+            return false
+        let m1 = int(loot)
+        object_plane[ofs] = [[Entity
+            category = Category prop,
+            spriteIndex = m1-21
+        ]]
+        level.plane1[ofs] = uint16(m1)
+    return true
 
 def getPlayerRelativeCoordinates ( X,Y : int ) : tuple<rx:float;ry:float;orx:float;ory:float>
     let ox = float(X) + 0.5
@@ -206,6 +245,197 @@ def getPlayerRelativeCoordinates ( X,Y : int ) : tuple<rx:float;ry:float;orx:flo
     let rx =  orx * player.dx + ory * player.dy
     let ry = -orx * player.dy + ory * player.dx
     return [[auto rx,ry,orx,ory]]
+
+[jit,hint(unsafe_range_check)]
+def trace ( px,py,pdx,pdy,maxDist:float; writeVis:bool ) : tuple<t:float; tx:float; textureIndex:int>
+    // direction of the ray
+    var dx = pdx
+    var dy = pdy
+    // direction in which the ray moves along each axis
+    let stepx = dx >= 0. ? 1 : -1
+    let stepy = dy >= 0. ? 1 : -1
+    // take absolute values of ray direction
+    dx = float(stepx) * dx
+    dy = float(stepy) * dy
+    // cell position of the ray on the map (starting from the player position)
+    var cx = floori(px)
+    var cy = floori(py)
+    // remaining fractional distance from the ray position to the next cell (0 < rfx, rfy <= 1)
+    var rfx = stepx > 0 ? 1. - (px % 1.) : px % 1.
+    if rfx == 0.
+        rfx = 1.
+        cx += stepx
+    var rfy = stepy > 0 ? 1. - (py % 1.) : py % 1.
+    if rfy == 0.
+        rfy = 1.
+        cy += stepy
+    // total time traveled by the ray
+    var t = 0.
+    // plane0 value of the cell visited by the ray
+    var m0 : int
+    // coordinate on the wall tile where the ray hit (0 <= tx <= 1)
+    var tx : float
+    // index of tile to display
+    var textureIndex : int
+    // ray casting loop
+    while t < maxDist
+        if writeVis
+            visibility_plane[cx+cy*64] = true
+        m0 = int(level.plane0[cx+cy*64])
+        if m0 <= 63
+            // hit a wall
+            var wallShift = 0.
+            let m1 = int(level.plane1[cx+cy*64])
+            if m1 == 98
+                // pushwall
+                assume timer = timer_plane[cx+cy*64]
+                if timer.active
+                    wallShift = timer.t
+                    if timer.dx != 0
+                        // wall moves horizontally
+                        if dx * rfy >= dy * wallShift
+                            // ray hits wall
+                            let dt = wallShift / dx
+                            t += dt
+                            rfy -= dt * dy
+                            rfx -= wallShift
+                        else
+                            // ray moves to next cell
+                            let dt = rfy / dy
+                            t += dt
+                            rfy = 1.
+                            cy += stepy
+                            rfx -= dt * dx
+                            continue
+                    else
+                        // wall moves vertically
+                        if dy * rfx >= dx * wallShift
+                            // ray hits wall
+                            let dt = wallShift / dy
+                            t += dt
+                            rfx -= dt * dx
+                            rfy -= wallShift
+                        else
+                            // ray moves to next cell
+                            let dt = rfx / dx
+                            t += dt
+                            rfx = 1.
+                            cx += stepx
+                            rfy -= dt * dy
+                            continue
+            if rfx == 1. - wallShift
+                // NS wall
+                textureIndex = 2 * m0 - 1
+                // fix texture orientation depending on ray direction
+                tx = stepx * stepy > 0 ? 1. - rfy : rfy
+            else
+                // EW wall
+                textureIndex = 2 * m0 - 2
+                // fix texture orientation depending on ray direction
+                tx = stepx * stepy < 0 ? 1. - rfx : rfx
+            break
+        elif m0 <= 101
+            // hit a door
+            var doorShfit = 0.
+            assume timer = timer_plane[cx+cy*64]
+            if timer.active
+                doorShfit = timer.t
+            if (m0 & 1) == 0
+                // NS door
+                if rfx >= .5 && (rfx - .5) * dy < rfy * dx
+                    // ray hits the central door line
+                    let dt = (rfx - .5) / dx
+                    t += dt
+                    rfy -= dt * dy
+                    rfx = .5
+                    tx = stepy > 0 ? 1. - rfy : rfy
+                    tx -= doorShfit
+                    if tx >= 0.
+                        // ray hits the door
+                        if m0 == 90
+                            textureIndex = 99
+                        elif m0 == 92
+                            textureIndex = 105
+                        elif m0 == 94
+                            textureIndex = 105
+                        elif m0 == 100
+                            textureIndex = 103
+                        else
+                            assert(false,"we should not be here?")
+                        break
+                if rfx * dy >= rfy * dx
+                    // hit the side wall
+                    let dt = rfy / dy
+                    t += dt
+                    rfx -= dt * dx
+                    rfy = 1.
+                    cy += stepy
+                    textureIndex = 100
+                    tx = stepx > 0 ? 1. - rfx : rfx
+                    break
+                else
+                    // pass through
+                    let dt = rfx / dx
+                    t += dt
+                    rfy -= dt * dy
+                    rfx = 1.
+                    cx += stepx
+            else
+                // EW door
+                if rfy >= .5 && (rfy - .5) * dx < rfx * dy
+                    // ray hits the central door line
+                    let dt = (rfy - .5) / dy
+                    t += dt
+                    rfx -= dt * dx
+                    rfy = .5
+                    tx = stepx > 0 ? 1. - rfx : rfx
+                    tx -= doorShfit
+                    if tx >= 0.
+                        // ray hits the door
+                        if m0 == 91
+                            textureIndex = 98
+                        elif m0 == 93
+                            textureIndex = 104
+                        elif m0 == 95
+                            textureIndex = 104
+                        elif m0 == 101
+                            textureIndex = 102
+                        else
+                            assert(false,"we should not be here?")
+                        break
+                if rfy * dx >= rfx * dy
+                    // hit the side wall
+                    let dt = rfx / dx
+                    t += dt
+                    rfy -= dt * dy
+                    rfx = 1.
+                    cx += stepx
+                    textureIndex = 101
+                    tx = stepy > 0 ? 1. - rfy : rfy
+                    break
+                else
+                    // pass through
+                    let dt = rfy / dy
+                    t += dt
+                    rfx -= dt * dx
+                    rfy = 1.
+                    cy += stepy
+        // move to the next cell
+        if rfx * dy <= rfy * dx
+            // move to next cell horizontally
+            let dt = rfx / dx
+            t += dt
+            rfx = 1.
+            cx += stepx
+            rfy -= dt * dy
+        else
+            // move to next cell vertically
+            let dt = rfy / dy
+            t += dt
+            rfy = 1.
+            cy += stepy
+            rfx -= dt * dx
+    return [[auto t, tx, textureIndex]]
 
 enum WeaponType
     knife = 0
@@ -455,7 +685,7 @@ def shoot ( var self:Player )
                     if prc.rx >= d
                         continue
                     if abs(prc.ry) <= .3
-                        enemy_plane[ofs] |> takeDamage(X,Y,weaponDamage[int(weaponType)])
+                        enemy_plane[ofs] |> takeDamage(weaponDamage[int(weaponType)])
 
 def isTooCloseToDoor(var self:Player; X,Y:int)
     with self
@@ -488,11 +718,13 @@ def activate ( var self:Player)
             // door
             if m0==92 || m0==93 && !goldKey
                 // gold-locked door
-                print("gold-locked door\n")
+                play_game_audio_2d(AudioName HALTSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS)
+                hudText("GOLD KEY REQUIRED!", 2.)
                 return
             if m0==94 || m0==95 && !silverKey
                 // silver-locked door
-                print("silver-locked door\n")
+                play_game_audio_2d(AudioName HALTSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS)
+                hudText("SILVER KEY REQUIRED!", 2.)
                 return
             assume timer = timer_plane[Y*64+X]
             if !timer.active
@@ -581,6 +813,7 @@ var flashBase = float4(0.,0.,0.,0.)
 var flashTime = 0.
 
 def switchLevel ( index:int; reasonBecauseOfDeath = false )
+    clearHud()
     becauseOfDeath = reasonBecauseOfDeath
     play_game_sound(SoundName LEVELDONESND)
     levelFade = 1.
@@ -881,9 +1114,9 @@ var ENABLE_CHEAT_CODEDS = true
 def updatePlayer
     player |> update()
     // update hud
-    hudTime += 1./60./10. * frame_time
-    if hudTime > 1.
-        hudTime -= 1.
+    playerHoodTime += 1./60./10. * frame_time
+    if playerHoodTime > 1.
+        playerHoodTime -= 1.
     playerHealth = clamp(float(player.health) / 100., 0., 1.0)
     // note: the section bellow is for debugging only. It allows to save and load player position
     if !ENABLE_CHEAT_CODEDS
@@ -917,206 +1150,38 @@ def updatePlayer
                     player.dx = loc.dx
                     player.dy = loc.dy
                     to_log(LOG_INFO,"player at {player.x} {player.y} {player.dx} {player.dy}\n")
-
+    if is_key_pressed(VK_F9)
+        // spawn an enemy at 34-60
+        let X = 34
+        let Y = 60
+        var category = EnemyCategory ss
+        if enemy_plane[X + Y * 64].category == Category nothing
+            enemy_plane[X + Y * 64] = [[Enemy
+                cx = X, cy = Y,
+                dox = 1., doy = 0.,
+                category = Category enemy,
+                enemyCategory = category,
+                patrolling = false,
+                spriteIndex = enemyClasses[int(category)].spriteIndex,
+                health = enemyClasses[int(category)].hp,
+                orientable = true
+            ]]
     if is_key_pressed(VK_F10)
         switchLevel(levelIndex+1)
+
+def public updateHud
+    hudMessageTime -= 1./60. * frame_time
+    if hudMessageTime < 0.
+        hudMessageTime = 0.
+        hudMessage = ""
 
 def public updateGame(dt:float)
     frame_time = dt / 16.0
     updatePalette()
     if dLevelFade != 0.
         return
+    updateHud()
     updatePlayer()
     updateTimers()
     updateThings()
 
-[jit,hint(unsafe_range_check)]
-def trace ( px,py,pdx,pdy,maxDist:float; writeVis:bool ) : tuple<t:float; tx:float; textureIndex:int>
-    // direction of the ray
-    var dx = pdx
-    var dy = pdy
-    // direction in which the ray moves along each axis
-    let stepx = dx >= 0. ? 1 : -1
-    let stepy = dy >= 0. ? 1 : -1
-    // take absolute values of ray direction
-    dx = float(stepx) * dx
-    dy = float(stepy) * dy
-    // cell position of the ray on the map (starting from the player position)
-    var cx = floori(px)
-    var cy = floori(py)
-    // remaining fractional distance from the ray position to the next cell (0 < rfx, rfy <= 1)
-    var rfx = stepx > 0 ? 1. - (px % 1.) : px % 1.
-    if rfx == 0.
-        rfx = 1.
-        cx += stepx
-    var rfy = stepy > 0 ? 1. - (py % 1.) : py % 1.
-    if rfy == 0.
-        rfy = 1.
-        cy += stepy
-    // total time traveled by the ray
-    var t = 0.
-    // plane0 value of the cell visited by the ray
-    var m0 : int
-    // coordinate on the wall tile where the ray hit (0 <= tx <= 1)
-    var tx : float
-    // index of tile to display
-    var textureIndex : int
-    // ray casting loop
-    while t < maxDist
-        if writeVis
-            visibility_plane[cx+cy*64] = true
-        m0 = int(level.plane0[cx+cy*64])
-        if m0 <= 63
-            // hit a wall
-            var wallShift = 0.
-            let m1 = int(level.plane1[cx+cy*64])
-            if m1 == 98
-                // pushwall
-                assume timer = timer_plane[cx+cy*64]
-                if timer.active
-                    wallShift = timer.t
-                    if timer.dx != 0
-                        // wall moves horizontally
-                        if dx * rfy >= dy * wallShift
-                            // ray hits wall
-                            let dt = wallShift / dx
-                            t += dt
-                            rfy -= dt * dy
-                            rfx -= wallShift
-                        else
-                            // ray moves to next cell
-                            let dt = rfy / dy
-                            t += dt
-                            rfy = 1.
-                            cy += stepy
-                            rfx -= dt * dx
-                            continue
-                    else
-                        // wall moves vertically
-                        if dy * rfx >= dx * wallShift
-                            // ray hits wall
-                            let dt = wallShift / dy
-                            t += dt
-                            rfx -= dt * dx
-                            rfy -= wallShift
-                        else
-                            // ray moves to next cell
-                            let dt = rfx / dx
-                            t += dt
-                            rfx = 1.
-                            cx += stepx
-                            rfy -= dt * dy
-                            continue
-            if rfx == 1. - wallShift
-                // NS wall
-                textureIndex = 2 * m0 - 1
-                // fix texture orientation depending on ray direction
-                tx = stepx * stepy > 0 ? 1. - rfy : rfy
-            else
-                // EW wall
-                textureIndex = 2 * m0 - 2
-                // fix texture orientation depending on ray direction
-                tx = stepx * stepy < 0 ? 1. - rfx : rfx
-            break
-        elif m0 <= 101
-            // hit a door
-            var doorShfit = 0.
-            assume timer = timer_plane[cx+cy*64]
-            if timer.active
-                doorShfit = timer.t
-            if (m0 & 1) == 0
-                // NS door
-                if rfx >= .5 && (rfx - .5) * dy < rfy * dx
-                    // ray hits the central door line
-                    let dt = (rfx - .5) / dx
-                    t += dt
-                    rfy -= dt * dy
-                    rfx = .5
-                    tx = stepy > 0 ? 1. - rfy : rfy
-                    tx -= doorShfit
-                    if tx >= 0.
-                        // ray hits the door
-                        if m0 == 90
-                            textureIndex = 99
-                        elif m0 == 92
-                            textureIndex = 105
-                        elif m0 == 94
-                            textureIndex = 105
-                        elif m0 == 100
-                            textureIndex = 103
-                        else
-                            assert(false,"we should not be here?")
-                        break
-                if rfx * dy >= rfy * dx
-                    // hit the side wall
-                    let dt = rfy / dy
-                    t += dt
-                    rfx -= dt * dx
-                    rfy = 1.
-                    cy += stepy
-                    textureIndex = 100
-                    tx = stepx > 0 ? 1. - rfx : rfx
-                    break
-                else
-                    // pass through
-                    let dt = rfx / dx
-                    t += dt
-                    rfy -= dt * dy
-                    rfx = 1.
-                    cx += stepx
-            else
-                // EW door
-                if rfy >= .5 && (rfy - .5) * dx < rfx * dy
-                    // ray hits the central door line
-                    let dt = (rfy - .5) / dy
-                    t += dt
-                    rfx -= dt * dx
-                    rfy = .5
-                    tx = stepx > 0 ? 1. - rfx : rfx
-                    tx -= doorShfit
-                    if tx >= 0.
-                        // ray hits the door
-                        if m0 == 91
-                            textureIndex = 98
-                        elif m0 == 93
-                            textureIndex = 104
-                        elif m0 == 95
-                            textureIndex = 104
-                        elif m0 == 101
-                            textureIndex = 102
-                        else
-                            assert(false,"we should not be here?")
-                        break
-                if rfy * dx >= rfx * dy
-                    // hit the side wall
-                    let dt = rfx / dx
-                    t += dt
-                    rfy -= dt * dy
-                    rfx = 1.
-                    cx += stepx
-                    textureIndex = 101
-                    tx = stepy > 0 ? 1. - rfy : rfy
-                    break
-                else
-                    // pass through
-                    let dt = rfy / dy
-                    t += dt
-                    rfx -= dt * dx
-                    rfy = 1.
-                    cy += stepy
-        // move to the next cell
-        if rfx * dy <= rfy * dx
-            // move to next cell horizontally
-            let dt = rfx / dx
-            t += dt
-            rfx = 1.
-            cx += stepx
-            rfy -= dt * dy
-        else
-            // move to next cell vertically
-            let dt = rfy / dy
-            t += dt
-            rfy = 1.
-            cy += stepy
-            rfx -= dt * dx
-    return [[auto t, tx, textureIndex]]

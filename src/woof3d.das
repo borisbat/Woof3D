@@ -1,15 +1,760 @@
-module game
+module woof3d
 
-require files
 require app
-require sound_names
-require entities
 
-require daslib/algorithm
-require daslib/json_boost
-require daslib/random
 require math
 require fio
+require strings
+
+require daslib/array_boost
+require daslib/random
+require daslib/algorithm
+
+require rast2d
+
+// -------------------- global configuation --------------------
+
+let WL6_FILES_ROOT = "../data"
+
+var ENABLE_CHEAT_CODEDS = true
+
+// -------------------- resource files --------------------
+
+let SOUND_SAMPLE_RATE = 7000
+
+let TOTAL_LEVELS = 60
+
+let HUFFMAN_TREE_NODE_COUNT = 255
+let HUFFMAN_TREE_ROOT = 254
+
+let NUMBER_OF_PIC_CHUNKS = 149
+
+let NUMSOUNDS = 87
+let STARTPCSOUNDS = 0
+let STARTADLIBSOUNDS = 87
+let STARTDIGISOUNDS = 174
+let PC_RATE = 140
+let PC_BASE_TIMER = 1193181
+let PC_VOLUME = 20
+
+let PIC_COUNT = 140
+let PIC_STARTS = 3
+let PIC_ENDS = 134
+
+struct HuffmanNode
+    node_0, node_1 : int
+
+var HuffmanTree : HuffmanNode[HUFFMAN_TREE_NODE_COUNT]
+
+var rlewTag : uint16
+var mapHead : uint[TOTAL_LEVELS]
+
+struct Level
+    plane0 : int[64][64]
+    plane1 : int[64][64]
+
+var Levels : Level[TOTAL_LEVELS]
+
+struct WallTexture
+    data : uint8[64*64]
+
+var WallPics : array<WallTexture>
+
+struct SpriteSpan
+    endRow   : int
+    startRow : int
+
+struct SpriteTexture
+    data : array<uint8>
+    firstCol, lastCol : int
+    colOffset : int[64]
+    pixelOffset : int[64]
+    spans : array<SpriteSpan>
+
+var Sprites : array<SpriteTexture>
+
+struct Sound
+    data : array<uint8>
+
+var Sounds : array<Sound>
+
+var Audio : array<Sound>
+
+var PicOffsets : int[NUMBER_OF_PIC_CHUNKS]
+
+struct Picture
+    width, height : int
+    texels : array<uint8>
+    data : array<uint8>
+
+var Pictures : array<Picture>
+
+let GamePalette = [[uint
+    0xff000000; 0xffa80000; 0xff00a800; 0xffa8a800; 0xff0000a8; 0xffa800a8; 0xff0054a8; 0xffa8a8a8;
+    0xff545454; 0xfffc5454; 0xff54fc54; 0xfffcfc54; 0xff5454fc; 0xfffc54fc; 0xff54fcfc; 0xfffcfcfc;
+    0xffececec; 0xffdcdcdc; 0xffd0d0d0; 0xffc0c0c0; 0xffb4b4b4; 0xffa8a8a8; 0xff989898; 0xff8c8c8c;
+    0xff7c7c7c; 0xff707070; 0xff646464; 0xff545454; 0xff484848; 0xff383838; 0xff2c2c2c; 0xff202020;
+    0xff0000fc; 0xff0000ec; 0xff0000e0; 0xff0000d4; 0xff0000c8; 0xff0000bc; 0xff0000b0; 0xff0000a4;
+    0xff000098; 0xff000088; 0xff00007c; 0xff000070; 0xff000064; 0xff000058; 0xff00004c; 0xff000040;
+    0xffd8d8fc; 0xffb8b8fc; 0xff9c9cfc; 0xff7c7cfc; 0xff5c5cfc; 0xff4040fc; 0xff2020fc; 0xff0000fc;
+    0xff5ca8fc; 0xff4098fc; 0xff2088fc; 0xff0078fc; 0xff006ce4; 0xff0060cc; 0xff0054b4; 0xff004c9c;
+    0xffd8fcfc; 0xffb8fcfc; 0xff9cfcfc; 0xff7cfcfc; 0xff5cf8fc; 0xff40f4fc; 0xff20f4fc; 0xff00f4fc;
+    0xff00d8e4; 0xff00c4cc; 0xff00acb4; 0xff009c9c; 0xff008484; 0xff006c70; 0xff005458; 0xff004040;
+    0xff5cfcd0; 0xff40fcc4; 0xff20fcb4; 0xff00fca0; 0xff00e490; 0xff00cc80; 0xff00b474; 0xff009c60;
+    0xffd8fcd8; 0xffb8fcbc; 0xff9cfc9c; 0xff7cfc80; 0xff5cfc60; 0xff40fc40; 0xff20fc20; 0xff00fc00;
+    0xff00fc00; 0xff00ec00; 0xff00e000; 0xff00d400; 0xff00c804; 0xff00bc04; 0xff00b004; 0xff00a404;
+    0xff009804; 0xff008804; 0xff007c04; 0xff007004; 0xff006404; 0xff005804; 0xff004c04; 0xff004004;
+    0xfffcfcd8; 0xfffcfcb8; 0xfffcfc9c; 0xfff8fc7c; 0xfffcfc5c; 0xfffcfc40; 0xfffcfc20; 0xfffcfc00;
+    0xffe4e400; 0xffcccc00; 0xffb4b400; 0xff9c9c00; 0xff848400; 0xff707000; 0xff585800; 0xff404000;
+    0xfffcbc5c; 0xfffcb040; 0xfffca820; 0xfffc9c00; 0xffe48c00; 0xffcc7c00; 0xffb46c00; 0xff9c5c00;
+    0xfffcd8d8; 0xfffcbcb8; 0xfffc9c9c; 0xfffc807c; 0xfffc605c; 0xfffc4040; 0xfffc2420; 0xfffc0400;
+    0xfffc0000; 0xffec0000; 0xffe00000; 0xffd40000; 0xffc80000; 0xffbc0000; 0xffb00000; 0xffa40000;
+    0xff980000; 0xff880000; 0xff7c0000; 0xff700000; 0xff640000; 0xff580000; 0xff4c0000; 0xff400000;
+    0xff282828; 0xff34e0fc; 0xff24d4fc; 0xff18ccfc; 0xff08c0fc; 0xff00b4fc; 0xfffc20b4; 0xfffc00a8;
+    0xffe40098; 0xffcc0080; 0xffb40074; 0xff9c0060; 0xff840050; 0xff700044; 0xff580034; 0xff400028;
+    0xfffcd8fc; 0xfffcb8fc; 0xfffc9cfc; 0xfffc7cfc; 0xfffc5cfc; 0xfffc40fc; 0xfffc20fc; 0xfffc00fc;
+    0xffe400e0; 0xffcc00c8; 0xffb400b4; 0xff9c009c; 0xff840084; 0xff70006c; 0xff580058; 0xff400040;
+    0xffdce8fc; 0xffd0e0fc; 0xffc4d8fc; 0xffbcd4fc; 0xffb0ccfc; 0xffa4c4fc; 0xff9cbcfc; 0xff90b8fc;
+    0xff80b0fc; 0xff70a4fc; 0xff609cfc; 0xff5c94f0; 0xff588ce8; 0xff5488dc; 0xff5080d0; 0xff4c7cc8;
+    0xff4878bc; 0xff4470b4; 0xff4068a8; 0xff3c64a0; 0xff38609c; 0xff345c90; 0xff305888; 0xff2c5080;
+    0xff284c74; 0xff24486c; 0xff20405c; 0xff1c3c54; 0xff183848; 0xff183040; 0xff142c38; 0xff0c2028;
+    0xff640060; 0xff646400; 0xff606000; 0xff1c0000; 0xff2c0000; 0xff102430; 0xff480048; 0xff500050;
+    0xff340000; 0xff1c1c1c; 0xff4c4c4c; 0xff5c5c5c; 0xff404040; 0xff303030; 0xff343434; 0xfff4f4d8;
+    0xffe8e8b8; 0xffdcdc9c; 0xffc8c874; 0xffc0c048; 0xffb4b420; 0xffb0b020; 0xffa4a400; 0xff989800;
+    0xff8c8c00; 0xff848400; 0xff7c7c00; 0xff787800; 0xff747400; 0xff707000; 0xff6c6c00; 0xff880098]]
+
+def LoadBytes ( filename : string )
+    var bytes : array<uint8>
+    fopen("{WL6_FILES_ROOT}/{filename}", "rb") <| $ ( fr )
+        fmap(fr) <| $ ( data )
+            bytes := data
+    if empty(bytes)
+        panic("failed to load file: {filename}")
+    return <- bytes
+
+def getUInt8 ( bytes : array<uint8>; offset : int ) : uint8
+    return bytes[offset]
+
+def getUInt8 ( bytes : array<uint8>#; offset : int ) : uint8
+    return bytes[offset]
+
+def getUInt16 ( bytes : array<uint8>; offset : int ) : uint16
+    return uint16(uint(bytes[offset]) + (uint(bytes[offset+1]) << 8u))
+
+def getUInt16 ( bytes : array<uint8>#; offset : int ) : uint16
+    return uint16(uint(bytes[offset]) + (uint(bytes[offset+1]) << 8u))
+
+def getUInt32 ( bytes : array<uint8>; offset : int ) : uint
+    return uint(bytes[offset]) + (uint(bytes[offset+1]) << 8u) + (uint(bytes[offset+2]) << 16u) + (uint(bytes[offset+3]) << 24u)
+
+def getUInt32 ( bytes : array<uint8>#; offset : int ) : uint
+    return uint(bytes[offset]) + (uint(bytes[offset+1]) << 8u) + (uint(bytes[offset+2]) << 16u) + (uint(bytes[offset+3]) << 24u)
+
+def setUInt8 ( var bytes : array<uint8>; offset : int; value : uint8 )
+    bytes[offset] = value
+
+def setUInt16 ( var bytes : array<uint8>; offset : int; value : uint16 )
+    bytes[offset] = uint8(uint(value) & 0xFFu)
+    bytes[offset+1] = uint8((uint(value) >> 8u) & 0xFFu)
+
+def rlewDecode ( bytes : array<uint8> )
+    var buffer : array<uint16>
+    let rlewSize = getUInt16(bytes, 0)
+    buffer |> resize(int(rlewSize)/2)
+    var inOffset = 2
+    var outOffset = 0
+    let bytesSize = bytes |> length
+    while inOffset < bytesSize
+        var w = getUInt16(bytes, inOffset)
+        inOffset += 2
+        if w == rlewTag
+            var n = getUInt16(bytes, inOffset)
+            var x = getUInt16(bytes, inOffset + 2)
+            inOffset += 4
+            for i in range(uint(n))
+                buffer[outOffset] = x
+                outOffset ++
+        else
+            buffer[outOffset] = w
+            outOffset++
+    return <- buffer
+
+def carmackDecode ( bytes : array<uint8># )
+    let size = getUInt16(bytes, 0)
+    var outView : array<uint8>
+    outView |> resize(int(size))
+    var inOffset = 2
+    var outOffset = 0
+    let bytesSize = bytes |> length
+    while inOffset < bytesSize
+        let x = getUInt8(bytes, inOffset + 1)
+        if x == 0xA7u8 || x == 0xA8u8
+            // possibly a pointer
+            var n = getUInt8(bytes, inOffset)
+            if n == 0u8
+                // exception (not really a pointer)
+                setUInt8(outView, outOffset, getUInt8(bytes, inOffset + 2))
+                setUInt8(outView, outOffset + 1, x)
+                inOffset += 3
+                outOffset += 2
+            elif x == 0xA7u8
+                // near pointer
+                let offset = 2 * int(getUInt8(bytes, inOffset + 2))
+                for i in range(uint(n))
+                    setUInt16(outView, outOffset, getUInt16(outView, outOffset - offset))
+                    outOffset += 2
+                inOffset += 3
+            else
+                // far pointer
+                let offset = 2 * int(getUInt16(bytes, inOffset + 2))
+                for i in range(uint(n))
+                    setUInt16(outView, outOffset, getUInt16(outView, offset + 2 * i))
+                    outOffset += 2
+                inOffset += 4
+        else
+            // not a pointer
+            setUInt16(outView, outOffset, getUInt16(bytes, inOffset))
+            inOffset += 2
+            outOffset += 2
+    return <- outView
+
+def InitMapHead()
+    var bytes <- LoadBytes("MAPHEAD.WL6")
+    rlewTag = bytes |> getUInt16(0)
+    assert(uint(rlewTag) == 0xABCD, "invalid rlew tag")
+    for i in range(TOTAL_LEVELS)
+        mapHead[i] = bytes |> getUInt32(2 + i*4)
+
+def InitGameMap()
+    var bytes <- LoadBytes("GAMEMAPS.WL6")
+    for level in range(TOTAL_LEVELS)
+        let offset = mapHead[level]
+        array_view(bytes, int(offset), 42) <| $ ( header )
+            let plane0Offset = header |> getUInt32(0)
+            let plane0Size = header |> getUInt16(12)
+            let plane1Offset = header |> getUInt32(4)
+            let plane1Size = header |> getUInt16(14)
+            array_view(bytes, int(plane0Offset), int(plane0Size)) <| $ ( plane0View )
+                var cdec <- carmackDecode(plane0View)
+                var rdec <- rlewDecode(cdec)
+                for x in range(64)
+                    for y in range(64)
+                        Levels[level].plane0[x][y] = int(rdec[x+y*64])
+            array_view(bytes, int(plane1Offset), int(plane1Size)) <| $ ( plane1View )
+                var cdec <- carmackDecode(plane1View)
+                var rdec <- rlewDecode(cdec)
+                for x in range(64)
+                    for y in range(64)
+                        Levels[level].plane1[x][y] = int(rdec[x+y*64])
+
+def prepareSprite ( var sprite : SpriteTexture )
+    sprite.firstCol = int(sprite.data |> getUInt16(0))
+    sprite.lastCol = int(sprite.data |> getUInt16(2))
+    let nbCol = sprite.lastCol - sprite.firstCol + 1
+    var pixelOffset = 4 + 2 * nbCol
+    for col in range(sprite.firstCol, sprite.lastCol + 1)
+        var colOffset = int(sprite.data |> getUInt16(4 + 2 * (col - sprite.firstCol)))
+        sprite.pixelOffset[col] = pixelOffset
+        sprite.colOffset[col] = sprite.spans |> length
+        while true
+            let endRow = int(sprite.data |> getUInt16(colOffset)) / 2
+            if endRow == 0
+                sprite.spans |> push([[SpriteSpan startRow=0, endRow=0]])
+                break
+            let startRow = int(sprite.data |> getUInt16(colOffset + 4)) / 2
+            sprite.spans |> push([[SpriteSpan startRow=startRow, endRow=endRow]])
+            colOffset += 6
+            for row in range(startRow, endRow)
+                pixelOffset ++
+
+def InitResources()
+    var bytes <- LoadBytes("VSWAP.WL6")
+    let totalChunks = int(getUInt16(bytes, 0))
+    let firstSpriteChunk = int(getUInt16(bytes, 2))
+    let wallChunks = firstSpriteChunk
+    let firstSoundChunk = int(getUInt16(bytes, 4))
+    let spriteChunks = firstSoundChunk - firstSpriteChunk
+    let soundChunks = totalChunks - firstSoundChunk
+    WallPics |> resize(wallChunks)
+    let wallsOffset = getUInt32(bytes, 6)
+    for i in range(wallChunks)
+        let wallSize = int(bytes |> getUInt16(6 + totalChunks*4 + i*2))
+        array_view(bytes, int(wallsOffset) + i*4096, 4096) <| $ ( view )
+            for s,d in view, WallPics[i].data
+                d = s
+    Sprites |> resize(spriteChunks)
+    for i in range(spriteChunks)
+        let spriteOffset = int(getUInt32(bytes, 6 + (firstSpriteChunk + i)*4))
+        let spriteSize = int(bytes |> getUInt16(6 + totalChunks*4 + (firstSpriteChunk + i)*2))
+        array_view(bytes, spriteOffset, spriteSize) <| $ ( view )
+            Sprites[i].data := view
+            prepareSprite(Sprites[i])
+    Sounds |> resize(soundChunks)
+    for i in range(soundChunks)
+        let soundOffset = int(getUInt32(bytes, 6 + (firstSoundChunk + i)*4))
+        let soundSize = int(bytes |> getUInt16(6 + totalChunks*4 + (firstSoundChunk + i)*2))
+        array_view(bytes, soundOffset, soundSize) <| $ ( view )
+            Sounds[i].data := view
+
+def convertPcSoundToWave ( src:array<uint8>#; hertz:int )
+    var dst : array<uint8>
+    dst |> resize(src |> length * hertz / PC_RATE)
+    var dstOut = 0
+    var sign = -1
+    var phase_tic = 0
+    for tone in src
+        let phase_length = (hertz * int(tone) * 60) / (2 * PC_BASE_TIMER)
+        for i in range(hertz / PC_RATE)
+            if tone != 0u8
+                dst[dstOut++] = uint8(128 + sign * PC_VOLUME)
+                if phase_tic >= phase_length
+                    sign = -sign
+                    phase_tic = 0
+                phase_tic += 1
+            else
+                phase_tic = 0
+                dst[dstOut++] = 128u8
+    return <- dst
+
+def InitAudio()
+    var audioHeader <- LoadBytes("AUDIOHED.WL6")
+    var audioData <- LoadBytes("AUDIOT.WL6")
+    for i in range(NUMSOUNDS)
+        let offset = getUInt32(audioHeader, (i+STARTPCSOUNDS)*4)
+        let size = getUInt32(audioHeader, (i+1+STARTPCSOUNDS)*4) - offset
+        array_view(audioData, int(offset), int(size)) <| $ ( view )
+            var snd <- [[Sound data <- convertPcSoundToWave(view, SOUND_SAMPLE_RATE)]]
+            Audio |> emplace(snd)
+
+def InitHuffmanTree
+    var bytes <- LoadBytes("VGADICT.WL6")
+    for n in range(HUFFMAN_TREE_NODE_COUNT)
+        HuffmanTree[n].node_0 = int(bytes |> getUInt16(n*4))
+        HuffmanTree[n].node_1 = int(bytes |> getUInt16(n*4+2))
+
+def InitPicOffsets
+    var bytes <- LoadBytes("VGAHEAD.WL6")
+    for n in range(NUMBER_OF_PIC_CHUNKS)
+        let b0 = int(bytes |> getUInt8(n*3))
+        let b1 = int(bytes |> getUInt8(n*3+1))
+        let b2 = int(bytes |> getUInt8(n*3+2))
+        let ofs = b0 + (b1 << 8) + (b2 << 16)
+        PicOffsets[n] = ofs!=int(0x00ffffff) ? ofs : -1
+
+def huffman_expand ( src:array<uint8>#; length:int )
+    var dst : array<uint8>
+    dst |> resize(length)
+    var read = 0
+    var write = 0
+    var mask = 0x01
+    var input = src[read++]
+    var node_value = 0
+    var node = HUFFMAN_TREE_ROOT
+    while true
+        if (uint(input) & mask) == 0u
+            node_value = HuffmanTree[node].node_0
+        else
+            node_value = HuffmanTree[node].node_1
+        if mask == 0x80
+            mask = 0x01
+            input = src[read++]
+        else
+            mask <<= 1u
+        if node_value <= int(0xff)
+            dst[write++] = uint8(node_value)
+            node = HUFFMAN_TREE_ROOT
+            if write == length
+                break
+        else
+            node = node_value - 256
+    return <- dst
+
+def ExtractPic ( bytes:array<uint8>; magic_number:int )
+    var next_index = magic_number + 1
+    while PicOffsets[next_index] == -1 && next_index < PIC_COUNT
+        next_index += 1
+    var compressed_length = PicOffsets[next_index] - PicOffsets[magic_number]
+    var expand_length = int(bytes |> getUInt32(PicOffsets[magic_number]))
+    var texels : array<uint8>
+    array_view(bytes, PicOffsets[magic_number]+4, compressed_length) <| $ ( view )
+        texels <- huffman_expand(view, expand_length)
+    return <- texels
+
+def ExtractTexels ( bytes:array<uint8>; w,h:int )
+    var texels : array<uint8>
+    texels |> resize(w*h)
+    for y in range(h)
+        for x in range(w)
+            let ofs = (y*(w>>2)+(x>>2))+(x&3)*(w>>2)*h
+            let b = bytes[ofs]
+            texels[y*w+x] = b
+    return <- texels
+
+def FlipTexels ( bytes:array<uint8>; w,h:int )
+    var texels : array<uint8>
+    texels |> resize(w*h)
+    for y in range(h)
+        for x in range(w)
+            texels[x*h+y] = bytes[x+y*w]
+    return <- texels
+
+def InitPics
+    InitHuffmanTree()
+    InitPicOffsets()
+    var bytes <- LoadBytes("VGAGRAPH.WL6")
+    var compressed_length = PicOffsets[1] - PicOffsets[0]
+    var expand_length = int(bytes |> getUInt32(0))
+    var exp_buf : array<uint8>
+    array_view(bytes, 4, compressed_length) <| $ ( cbuf )
+        exp_buf <- huffman_expand(cbuf, expand_length)
+    Pictures |> resize(PIC_COUNT)
+    for picture,i in Pictures,count()
+        picture.width = int(exp_buf[4*i  ]) | int(exp_buf[4*i+1])
+        picture.height = int(exp_buf[4*i+2]) | int(exp_buf[4*i+3])
+        picture.texels <- ExtractPic(bytes, i+PIC_STARTS) |> ExtractTexels(picture.width,picture.height)
+        picture.data <- FlipTexels(picture.texels, picture.width, picture.height)
+    for i in range(PIC_ENDS, NUMBER_OF_PIC_CHUNKS-1)
+        var cl = PicOffsets[i+1] - PicOffsets[i]
+        var el = int(bytes |> getUInt32(PicOffsets[i]))
+    for i in range(0,PIC_STARTS)
+        var cl = PicOffsets[i+1] - PicOffsets[i]
+        var el = int(bytes |> getUInt32(PicOffsets[i]))
+
+def InitFiles
+    InitMapHead()
+    InitGameMap()
+    InitResources()
+    InitAudio()
+    InitPics()
+
+// -------------------- sound system --------------------
+
+enum SoundName
+    ACHTUNG =                0
+    DOGBARK =                2
+    OPENDOORSND =            3
+    CLOSEDOORSND =           8
+    ATKMACHINEGUNSND =       11
+    ATKPISTOLSND =           12
+    ATKGATLINGSND =          13
+	SCHUTZADSND =            14
+	GUTENTAGSND =            16
+	MUTTISND =               18
+	BOSSFIRESND =            20                 // note: this sound keeps going, even though its 4096 bytes long
+	SSFIRESND =              23
+    DEATHSCREAM1SND =        25
+    DEATHSCREAM2SND =        26
+    DEATHSCREAM3SND =        27
+    TAKEDAMAGESND =          28
+    PUSHWALLSND =            35         // test this?
+    AHHHGSND =               36
+    DIESND =                 38
+    EVASND =                 41
+    LEBENSND =               45
+    NAZIFIRESND =            47
+    SLURPIESND =             50
+    TOT_HUNDSND =            53
+    MEINGOTTSND =            55
+    SCHABBSHASND =           62
+    HITLERHASND =            66
+    SPIONSND =               70
+    NEINSOVASSND =           72
+    DOGATTACKSND =           75
+    LEVELDONESND =           77
+    MECHSTEPSND =            79
+    YEAHSND =                81
+    SCHEISTSND =             83
+    DEATHSCREAM4SND =        85
+    DEATHSCREAM5SND =        87
+    DONNERSND =              89                     // EPISODE 4 BOSS DIE
+    EINESND =                92                     // EPISODE 4 BOSS SIGHTING
+    ERLAUBENSND =            97                     // EPISODE 6 BOSS SIGHTING
+    DEATHSCREAM6SND =        103                    // FART
+    FART =                   103
+    DEATHSCREAM7SND =        104                    // GASP
+    DEATHSCREAM8SND =        106                    // GUH-BOY
+	DEATHSCREAM9SND =        108                    // AH GEEZ!
+    KEINSND =                110                    // EPISODE 5 BOSS SIGHTING
+    MEINSND =                113                    // EPISODE 6 BOSS DIE
+    ROSESND =                116                    // EPISODE 5 BOSS DIE
+
+enum AudioName
+    HITWALLSND              // 0
+    SELECTWPNSND            // 1
+    SELECTITEMSND           // 2
+    HEARTBEATSND            // 3
+    MOVEGUN2SND             // 4
+    MOVEGUN1SND             // 5
+    NOWAYSND                // 6
+    NAZIHITPLAYERSND        // 7
+    SCHABBSTHROWSND         // 8
+    PLAYERDEATHSND          // 9
+    DOGDEATHSND             // 10
+    ATKGATLINGSND           // 11
+    GETKEYSND               // 12
+    NOITEMSND               // 13
+    WALK1SND                // 14
+    WALK2SND                // 15
+    TAKEDAMAGESND           // 16
+    GAMEOVERSND             // 17
+    OPENDOORSND             // 18
+    CLOSEDOORSND            // 19
+    DONOTHINGSND            // 20
+    HALTSND                 // 21
+    DEATHSCREAM2SND         // 22
+    ATKKNIFESND             // 23
+    ATKPISTOLSND            // 24
+    DEATHSCREAM3SND         // 25
+    ATKMACHINEGUNSND        // 26
+    HITENEMYSND             // 27
+    SHOOTDOORSND            // 28
+    DEATHSCREAM1SND         // 29
+    GETMACHINESND           // 30
+    GETAMMOSND              // 31
+    SHOOTSND                // 32
+    HEALTH1SND              // 33
+    HEALTH2SND              // 34
+    BONUS1SND               // 35
+    BONUS2SND               // 36
+    BONUS3SND               // 37
+    GETGATLINGSND           // 38
+    ESCPRESSEDSND           // 39
+    LEVELDONESND            // 40
+    DOGBARKSND              // 41
+    ENDBONUS1SND            // 42
+    ENDBONUS2SND            // 43
+    BONUS1UPSND             // 44
+    BONUS4SND               // 45
+    PUSHWALLSND             // 46
+    NOBONUSSND              // 47
+    PERCENT100SND           // 48
+    BOSSACTIVESND           // 49
+    MUTTISND                // 50
+    SCHUTZADSND             // 51
+    AHHHGSND                // 52
+    DIESND                  // 53
+    EVASND                  // 54
+    GUTENTAGSND             // 55
+    LEBENSND                // 56
+    SCHEISTSND              // 57
+    NAZIFIRESND             // 58
+    BOSSFIRESND             // 59
+    SSFIRESND               // 60
+    SLURPIESND              // 61
+    TOT_HUNDSND             // 62
+    MEINGOTTSND             // 63
+    SCHABBSHASND            // 64
+    HITLERHASND             // 65
+    SPIONSND                // 66
+    NEINSOVASSND            // 67
+    DOGATTACKSND            // 68
+    FLAMETHROWERSND         // 69
+    MECHSTEPSND             // 70
+    GOOBSSND                // 71
+    YEAHSND                 // 72
+    DEATHSCREAM4SND         // 73
+    DEATHSCREAM5SND         // 74
+    DEATHSCREAM6SND         // 75
+    DEATHSCREAM7SND         // 76
+    DEATHSCREAM8SND         // 77
+    DEATHSCREAM9SND         // 78
+    DONNERSND               // 79
+    EINESND                 // 80
+    ERLAUBENSND             // 81
+    KEINSND                 // 82
+    MEINSND                 // 83
+    ROSESND                 // 84
+    MISSILEFIRESND          // 85
+    MISSILEHITSND           // 86
+
+def get_sound_data ( name:SoundName; max_seq:int=INT_MAX )
+    var index = int(name)
+    var data : array<float>
+    while index < length(Sounds)
+        let next = Sounds[index].data |> length
+        let cur = data |> length
+        data |> reserve ( data|>length + next )
+        for i in Sounds[index].data
+            data |> push(float(i)/128.0-1.0)
+        if next != 4096
+            break
+        index ++
+    return <- data
+
+def get_audio_data ( name:AudioName )
+    var index = int(name)
+    var data : array<float>
+    data |> reserve ( Audio[index].data |> length )
+    for i in Audio[index].data
+        data |> push(float(i)/128.0-1.0)
+    return <- data
+
+def play_game_sound_2d ( name:SoundName; xy:float2; r:float; rate:int=SOUND_SAMPLE_RATE )
+    play_app_sound_2d(xy, r, get_sound_data(name), rate)
+
+def play_game_sound ( name:SoundName; rate:int=SOUND_SAMPLE_RATE )
+    play_app_sound(get_sound_data(name), rate)
+
+def play_game_audio_2d ( name:AudioName; xy:float2; r:float; rate:int=SOUND_SAMPLE_RATE )
+    play_app_sound_2d(xy, r, get_audio_data(name), rate)
+
+def play_game_audio ( name:AudioName; rate:int=SOUND_SAMPLE_RATE )
+    play_app_sound(get_audio_data(name), rate)
+
+// -------------------- entities --------------------
+
+enum Collectible
+    DogFood = 29
+    KeyGold = 43
+    KeySilver = 44
+    Food = 47
+    Medkit = 48
+    AmmoClip = 49
+    MachineGun = 50
+    Chaingun = 51
+    TreasureCross = 52
+    TreasureChalice = 53
+    TreasureChest = 54
+    TreasureCrown = 55
+    LifeUp = 56
+
+enum Props
+    GreenBarrel = 24
+    TableAndChairs = 25
+    FloorLamp = 26
+    HangedSkeleton = 28
+    WhitePillar = 30
+    Tree = 31
+    Sink = 33
+    PottedPlant = 34
+    Urn = 35
+    BareTable = 36
+    SuitOfArmor = 39
+    HangingCage = 40
+    SkeletonInCage = 41
+    Bed = 45
+    Barrel = 58
+    Well = 59
+    EmptyWell = 60
+    Flag = 62
+    CallApogee = 63
+    Stove = 68
+    Spears = 69
+
+def isKey ( m1:int )
+    return m1==43 || m1==44
+
+def isHpRestore ( m1:int )
+    return m1==29 || m1==47 || m1==48
+
+def getPlayerDirection(dm:int; var dx,dy:float& )
+    if dm==0
+        dx = 0.0;   dy = -1.0
+    elif dm==1
+        dx = 1.0;   dy = 0.0
+    elif dm==2
+        dx = 0.0;   dy = 1.0
+    elif dm==3
+        dx = -1.0;  dy = 0.0
+
+def getEntityDirection(dm:int; var dx,dy:float& )
+    if dm==0
+        dx = 1.0;   dy = 0.0
+    elif dm==1
+        dx = 0.0;   dy = -1.0
+    elif dm==2
+        dx = -1.0;  dy = 0.0
+    elif dm==3
+        dx = 0.0;   dy = 1.0
+
+def isPlayer(m1:int)
+    return m1>=19 && m1<=22
+
+def isProp(m1:int)
+    return m1>=23 && m1<=70
+
+def isPushWall(m1:int)
+    return m1==98
+
+def isDeadGuard(m1:int)
+    return m1==124
+
+def isTreasure(m1:int)
+    return (m1==52 || m1==53 || m1==54 || m1==55)
+
+def isCollectible(m1:int)
+    return (m1==29 || m1==43 || m1==44 || m1==47 || m1==48 || m1==49 || m1==50 || m1==51 || m1==52 || m1==53 || m1==54 || m1==55 || m1==56)
+
+def isBlocking(m1:int)
+    return (m1==24 || m1==25 || m1==26 || m1==28 || m1==30 || m1==31 || m1==33 || m1==34 || m1==35 || m1==36 || m1==39 || m1==40 || m1==41 || m1==45 || m1==58 || m1==59 || m1==60 || m1==62 || m1==63 || m1==68 || m1==69)
+
+def isEnemy(m1:int)
+    return (m1>=108 && m1<=259)
+
+def isStandingGuard(m1:int)
+    return (m1>=108 && m1<=111 || m1>=144 && m1<=147 || m1>=180 && m1<=183)
+
+def isPatrollingGuard(m1:int)
+    return (m1>=112 && m1<=115 || m1>=148 && m1<=151 || m1>=184 && m1<=187)
+
+def isStandingOfficer(m1:int)
+    return (m1>=116 && m1<=119 || m1>=152 && m1<=155 || m1>=188 && m1<=191)
+
+def isPtrollingOfficer(m1:int)
+    return (m1>=120 && m1<=123 || m1>=156 && m1<=159 || m1>=192 && m1<=195)
+
+def isStandingSS(m1:int)
+    return (m1>=126 && m1<=129 || m1>=162 && m1<=165 || m1>=198 && m1<=201)
+
+def isPatrollingSS(m1:int)
+    return (m1>=130 && m1<=133 || m1>=166 && m1<=169 || m1>=202 && m1<=205)
+
+def isStandingDog(m1:int)
+    return (m1>=134 && m1<=137 || m1>=170 && m1<=173 || m1>=206 && m1<=209)
+
+def isPatrollingDog(m1:int)
+    return (m1>=138 && m1<=141 || m1>=174 && m1<=177 || m1>=210 && m1<=213)
+
+def isStandingMutant(m1:int)
+    return (m1>=216 && m1<=219 || m1>=234 && m1<=237 || m1>=252 && m1<=255)
+
+def isPatrollingMutant(m1:int)
+    return (m1>=220 && m1<=223 || m1>=238 && m1<=241 || m1>=256 && m1<=259)
+
+def isFakeHitler(m1:int)
+    return (m1==160)
+
+def isHitler(m1:int)
+    return (m1==178)
+
+def isGeneralFettgesicht(m1:int)
+    return (m1==179)
+
+def isDoctorSchabbs(m1:int)
+    return (m1==196)
+
+def isGretelGrosse(m1:int)
+    return (m1==197)
+
+def isHansGrosse(m1:int)
+    return (m1==214)
+
+def isOttoGiftmacher(m1:int)
+    return (m1==215)
+
+def isRedPacManGhost(m1:int)
+    return (m1==224)
+
+def isPinkPacManGhost(m1:int)
+    return (m1==225)
+
+def isOrangePacManGhost(m1:int)
+    return (m1==226)
+
+def isBluePacManGhost(m1:int)
+    return (m1==227)
+
+// -------------------- gameplay --------------------
 
 var frame_time = 0.66
 
@@ -34,23 +779,11 @@ let DOOR_OPEN_SPEED = 2.0        // how fast door opens (in tiles per second)
 let DOOR_CLOSE_SPPED = 2.0       // how fast door closes (in tiles per second)
 let DOOR_STAYS_CLOSED = 2.0      // how long door stays closed (in seconds)
 
-// hud
-
 var playerHoodTime = 0.
 var playerHealth = 1.
 
 var hudMessage = ""
 var hudMessageTime = 0.
-
-def hudText ( text:string; time:float )
-    hudMessage = text
-    hudMessageTime = time
-
-def clearHud
-    hudMessage = ""
-    hudMessageTime = 0.
-
-//
 
 struct Animation
     sprites : array<int>
@@ -59,17 +792,6 @@ struct Animation
     loop : bool
     orientable : bool
     rate : float
-
-def Animation ( SPRITES:array<int>; LOOP:bool=false; ORIENTABLE:bool=false; RATE:float=1.0/6.0 )
-    var self : Animation
-    with self
-        sprites := SPRITES
-        spriteIndex = 0
-        timer = 0.
-        loop = LOOP
-        orientable = ORIENTABLE
-        rate = RATE
-    return <- self
 
 enum Category
     nothing
@@ -123,8 +845,6 @@ struct EnemyClass
     attackDelay : float2    // min, max
     attackSound : SoundName // sound played when enemy attacks
     agroSound : SoundName   // sound played when enemy sees player
-
-// weaponFireRate : float[4] = [[float 2.5; 2.5; 7.1; 14.2]]
 
 let enemyClasses <- [[EnemyClass
 // guard
@@ -237,11 +957,42 @@ struct Enemy : Entity
 
 var enemies : array<Enemy?>
 
-def startAnimation ( var entity:Entity; ANIMATION:Animation? )
-    entity.animation = ANIMATION
-    entity.spriteIndex = entity.animation.sprites[0]
-
 var seed = random_seed(13)
+
+enum WeaponType
+    knife = 0
+    pistol = 1
+    machineGun = 2
+    chainGun = 3
+
+struct Player
+    pos : float2
+    dir : float2
+    health : int = 100
+    silverKey : bool
+    goldKey : bool
+    ammo : int = 8
+    speed : float = 0.065
+    speed_a : float = 0.05
+    radius : float = 0.25
+    moveForwars : bool = false
+    moveBackward : bool = false
+    strafeLeft : bool = false
+    strafeRight : bool = false
+    turnLeft : bool = false
+    turnRight : bool = false
+    turnAngle : float = 0.0
+    weaponSprite : int = 421
+    weaponAnimation : Animation?
+    weaponType : WeaponType = WeaponType pistol
+    hasWeapon : bool[4] = [[bool true; true; false; false ]]
+    weaponSounds : SoundName[4] = [[SoundName
+        SoundName ATKMACHINEGUNSND;
+        SoundName ATKPISTOLSND;
+        SoundName ATKMACHINEGUNSND;
+        SoundName ATKGATLINGSND]]
+    weaponFireRate : float[4] = [[float 2.5; 2.5; 7.1; 14.2]]
+    weaponDamage : int[4] = [[int 16; 18; 18; 18]]
 
 let random_take_damage_snd = [[SoundName
     SoundName DEATHSCREAM1SND;
@@ -252,6 +1003,70 @@ let random_death_snd = [[SoundName
     SoundName DEATHSCREAM7SND;
     SoundName DEATHSCREAM8SND;
 	SoundName DEATHSCREAM9SND]]
+
+let treasureAudio = [[AudioName
+    AudioName BONUS1SND;
+    AudioName BONUS2SND;
+    AudioName BONUS3SND;
+    AudioName BONUS3SND]]
+
+var player = Player()
+
+struct Timer
+    t : float
+    dx, dy : int
+    steps : int
+    opening : bool
+    active : bool
+    isDoor : bool
+    isWall : bool
+
+var timer_plane : Timer[64][64]
+
+var collision_plane : bool[64][64]
+
+var visibility_plane : bool[64][64]
+
+var zIndex : array<float>
+
+var fov = 1.
+var pixelWidth = 320.
+var pixelHeight = 200.
+var wallHeight = float(pixelWidth) / (2. * fov)
+
+var level : Level
+var levelIndex = 0
+var nextLevelIndex = 0
+var levelFade = 1.
+var dLevelFade = 0.
+var becauseOfDeath = false
+
+var flashFactor = float4(1.,1.,1.,1.)
+var flashBase = float4(0.,0.,0.,0.)
+var flashTime = 0.
+
+def hudText ( text:string; time:float )
+    hudMessage = text
+    hudMessageTime = time
+
+def clearHud
+    hudMessage = ""
+    hudMessageTime = 0.
+
+def Animation ( SPRITES:array<int>; LOOP:bool=false; ORIENTABLE:bool=false; RATE:float=1.0/6.0 )
+    var self : Animation
+    with self
+        sprites := SPRITES
+        spriteIndex = 0
+        timer = 0.
+        loop = LOOP
+        orientable = ORIENTABLE
+        rate = RATE
+    return <- self
+
+def startAnimation ( var entity:Entity; ANIMATION:Animation? )
+    entity.animation = ANIMATION
+    entity.spriteIndex = entity.animation.sprites[0]
 
 def takeDamage ( var self:Enemy; DAMAGE:int )
     with self
@@ -294,16 +1109,14 @@ def dropLoot ( XY : float2; loot:Collectible; chanceToDrop:float; force:bool = f
             category = Category prop,
             mapItem = int(loot),
             spriteIndex = int(loot)-21,
-            pos = XY                        // TODO: randomize position?
-        ]]
+            pos = XY]]                        // TODO: randomize position?
     return true
 
 def getPlayerRelativeCoordinates ( xy:float2 )
     let o = xy - player.pos
     return [[PlayerRelativeCoordinates
         rpos=float2(o.x * player.dir.x + o.y * player.dir.y, -o.x * player.dir.y + o.y * player.dir.x),
-        opos=o
-    ]]
+        opos=o]]
 
 def trace ( px,py,pdx,pdy,maxDist:float; writeVis:bool ) : tuple<t:float; tx:float; textureIndex:int>
     // direction of the ray
@@ -497,41 +1310,6 @@ def trace ( px,py,pdx,pdy,maxDist:float; writeVis:bool ) : tuple<t:float; tx:flo
             rfx -= dt * dx
     return [[auto t, tx, textureIndex]]
 
-enum WeaponType
-    knife = 0
-    pistol = 1
-    machineGun = 2
-    chainGun = 3
-
-struct Player
-    pos : float2
-    dir : float2
-    health : int = 100
-    silverKey : bool
-    goldKey : bool
-    ammo : int = 8
-    speed : float = 0.065
-    speed_a : float = 0.05
-    radius : float = 0.25
-    moveForwars : bool = false
-    moveBackward : bool = false
-    strafeLeft : bool = false
-    strafeRight : bool = false
-    turnLeft : bool = false
-    turnRight : bool = false
-    turnAngle : float = 0.0
-    weaponSprite : int = 421
-    weaponAnimation : Animation?
-    weaponType : WeaponType = WeaponType pistol
-    hasWeapon : bool[4] = [[bool true; true; false; false ]]
-    weaponSounds : SoundName[4] = [[SoundName
-        SoundName ATKMACHINEGUNSND;
-        SoundName ATKPISTOLSND;
-        SoundName ATKMACHINEGUNSND;
-        SoundName ATKGATLINGSND]]
-    weaponFireRate : float[4] = [[float 2.5; 2.5; 7.1; 14.2]]
-    weaponDamage : int[4] = [[int 16; 18; 18; 18]]
-
 def switchWeapon ( var self:Player; WEAPON_TYPE:WeaponType )
     with self
         if !hasWeapon[int(WEAPON_TYPE)]
@@ -583,12 +1361,6 @@ def move ( var self:Player; length,sideways:float )
         let newxy = floori(pos)
         if newxy != oldxy
             player |> collect(newxy)
-
-let treasureAudio = [[AudioName
-    AudioName BONUS1SND;
-    AudioName BONUS2SND;
-    AudioName BONUS3SND;
-    AudioName BONUS3SND]]
 
 def collect ( var self:Player; XY:int2 )
     with self
@@ -844,41 +1616,6 @@ def takeDamage ( var self:Player; DAMAGE:int )
             self |> die()
         else
             play_game_sound(random_take_damage_snd[ random_int(seed) % 3])
-
-var player = Player()
-
-struct Timer
-    t : float
-    dx, dy : int
-    steps : int
-    opening : bool
-    active : bool
-    isDoor : bool
-    isWall : bool
-
-var timer_plane : Timer[64][64]
-
-var collision_plane : bool[64][64]
-
-var visibility_plane : bool[64][64]
-
-var zIndex : array<float>
-
-var fov = 1.
-var pixelWidth = 320.
-var pixelHeight = 200.
-var wallHeight = float(pixelWidth) / (2. * fov)
-
-var level : Level
-var levelIndex = 0
-var nextLevelIndex = 0
-var levelFade = 1.
-var dLevelFade = 0.
-var becauseOfDeath = false
-
-var flashFactor = float4(1.,1.,1.,1.)
-var flashBase = float4(0.,0.,0.,0.)
-var flashTime = 0.
 
 def switchLevel ( index:int; reasonBecauseOfDeath = false )
     clearHud()
@@ -1301,8 +2038,6 @@ def updateTimers
                     timer.t = 0.
                     timer.active = false
 
-var ENABLE_CHEAT_CODEDS = true
-
 def updatePlayer
     player |> update()
     // update hud
@@ -1373,3 +2108,283 @@ def updateGame(dt:float)
     updateTimers()
     updateEnemies()
 
+// -------------------- rasterization --------------------
+
+let DRAW_PLAYER_POSITION = false
+
+let DRAW_VISIBILITY = false
+
+let DRAW_COLLISION = false
+
+def drawWalls ( level:Level; var bmp:Bitmap8# )
+    for i in range(bmp.size.x)
+        // current column position on the camera plane
+        let shift = fov * (float(i << 1) - pixelWidth) / (pixelWidth)
+        // direction of the ray
+        var dx = player.dir.x - shift * player.dir.y
+        var dy = player.dir.y + shift * player.dir.x
+        var tres = trace(player.pos.x,player.pos.y,dx,dy,FLT_MAX,true)
+        zIndex[i] = tres.t
+        lock_u8(WallPics[tres.textureIndex].data) <| $ ( tex )
+            drawWallPixels(i,tres.t,tres.tx,tex,bmp) // causes bug in jit. why?
+
+def drawWallPixels ( i:int; t,tx:float; tex:array<uint8>#; var bmp:Bitmap8# )
+    var h = wallHeight / (2. * t)
+    let y = floori(pixelHeight / 2. - h)
+    let ymin = max(0, y)
+    let ymax = min(floori(pixelHeight / 2. + h), bmp.size.y)
+    let dh = 0.5 /  (h+1.)
+    var uvY = (float(ymin - y) * dh) * 64.0
+    let dUVY = dh * 64.0
+    let texelOffset = 64 * floori(63. * clamp(tx,0.,1.))
+    rast_hspan(bmp.data,i*bmp.size.y+ymin,tex,texelOffset,uvY,dUVY,ymax-ymin)
+
+def isVisible(x,y:float)
+    let f = floori(float2(x,y)-float2(0.45))
+    let t = floori(float2(x,y)+float2(0.45))
+    for Y in range(f.y,t.y+1)
+        for X in range(f.x,t.x+1)
+            if visibility_plane[X][Y]
+                return true
+    return false
+
+def drawThings ( var bmp:Bitmap8# )
+    var things : array<Entity?>
+    things |> reserve ( enemies|>length + objects|>length )
+    for enemy in enemies
+        var prc = getPlayerRelativeCoordinates(enemy.pos)
+        if prc.rpos.x>0.05 && abs(prc.rpos.y)<prc.rpos.x + 1.
+            let epos = floori(enemy.pos)
+            if visibility_plane[epos.x][epos.y]
+                enemy.prc = prc
+                things |> push ( enemy )
+    for object in objects
+        var prc = getPlayerRelativeCoordinates(object.pos)
+        if prc.rpos.x>0.05 && abs(prc.rpos.y)<prc.rpos.x + 1.
+            let opos = floori(object.pos)
+            if visibility_plane[opos.x][opos.y]
+                object.prc = prc
+                things |> push ( object )
+    things |> sort <| $ ( a,b : Entity? )
+        if a.category != b.category
+            let ai = floori(a.pos)
+            let bi = floori(b.pos)
+            if ai==bi
+                return int(a.category) < int(b.category)
+        return a.prc.rpos.x > b.prc.rpos.x
+    for thing in things
+        drawThing(thing.prc.rpos.x,thing.prc.rpos.y,thing.prc.opos.x,thing.prc.opos.y,*thing,bmp)
+
+def getEntityAngle( Direction : float2 ) : int
+    var EntityAngle = floori((8.0f * atan2(Direction.y, Direction.x) / (2.0f * PI)) + 0.5f)
+    if EntityAngle < 0
+        EntityAngle = 8 - ((-EntityAngle) & 7)
+    return EntityAngle & 7
+
+def drawThing(rx,ry,orx,ory:float; OBJ:Entity; var bmp:Bitmap8# )
+    // draw
+    let th = wallHeight / rx
+    let tx = floori((ry / rx + fov) * wallHeight - th / 2.)
+    let ty = floori((pixelHeight - th) / 2.)
+    var index = OBJ.spriteIndex
+    if OBJ.orientable && (OBJ.animation==null || OBJ.animation.orientable)
+        let PlayerAngle = getEntityAngle(float2(orx,ory))
+        var Angle = getEntityAngle(OBJ.dir)
+        index = OBJ.spriteIndex + (Angle - PlayerAngle + 12) % 8
+    drawSprite(tx, ty, th, rx, Sprites[index], bmp)
+
+def drawSprite ( x,y: int; h:float; dist:float; sprite:SpriteTexture; var bmp:Bitmap8# )
+    lock(sprite.data) <| $ ( tspan )
+        let height = int(h)
+        let xmin = max(0, x)
+        let xmax = min(x+height, bmp.size.x-1)
+        if xmin > xmax
+            return
+        let dh = 1. /  (h+1.)
+        var uvX = (float(xmin - x) * dh) * 64.0
+        let dUVX = dh * 64.0
+        for X in range(xmin,xmax)
+            if zIndex[X]>dist
+                let col = int(uvX)
+                if col >= sprite.firstCol && col <= sprite.lastCol
+                    var pixelOffset = sprite.pixelOffset[col]
+                    var colOffset = sprite.colOffset[col]
+                    while true
+                        let endRow = sprite.spans[colOffset].endRow
+                        if endRow == 0
+                            break
+                        let startRow = sprite.spans[colOffset].startRow
+                        colOffset ++
+                        let ystart = y + floori(float(startRow) * h / 64.)
+                        let ymin = max(ystart, 0)
+                        let ymax = min(y + floori(float(endRow) * h / 64.), bmp.size.y-1)
+                        if ymin < ymax
+                            var uv0 = float(ymin - ystart) * dUVX
+                            rast_hspan(bmp.data,X*bmp.size.y+ymin,tspan,pixelOffset,uv0,dUVX,ymax-ymin)
+                        pixelOffset += endRow - startRow
+            uvX += dUVX
+
+def draw2DElement ( x,y,w,h:int; var pic:Picture; var bmp:Bitmap8# )
+    var u = 0.
+    let du = 1. / float(w+1)
+    let dv = 1. / float(h+1)
+    var DV = dv * float(pic.height)
+    lock(pic.data) <| $ ( tspan )
+        for X in range(x,x+w)
+            let px = floori(u * float(pic.width))
+            rast_hspan(bmp.data,y+X*bmp.size.y,tspan,px*pic.height,0.,DV,h)
+            u += du
+
+def drawBackground ( var bmp:Bitmap8# )
+    let h = bmp.size.y / 2
+    rast_fillRect(bmp,0,0,bmp.size.x,h,29u8)
+    rast_fillRect(bmp,0,h,bmp.size.x,h,25u8)
+
+def drawWeapon ( var bmp:Bitmap8# )
+    let height = bmp.size.y
+    drawSprite(
+            bmp.size.x / 2 - height / 2,
+            0,
+            float(height),
+            0.,
+            Sprites[player.weaponSprite],
+            bmp)
+
+var hudFactor = 1.
+
+def drawHUDElement(x,y,w,h:int; var pic:Picture; var bmp:Bitmap8# )
+    var minx = max(floori(float(x)*hudFactor), 0)
+    var maxx = min(floori(float(x+w)*hudFactor), bmp.size.x)
+    var miny = max(floori(float(y)*hudFactor), 0)
+    var maxy = min(floori(float(y+h)*hudFactor), bmp.size.y)
+    if minx>maxx || miny>maxy
+        return
+    draw2DElement(minx,miny,maxx-minx,maxy-miny,pic,bmp)
+
+def drawHUDNum(x,y:int; num:int; var bmp:Bitmap8# )
+    let txt = "{num}"
+    for Ch,i in txt,count()
+        drawHUDElement(x+i*8,y,8,16,Pictures[Ch-'0'+105],bmp)
+
+def getHUDCharSpriteIndex ( chu:int )
+    if chu==':'
+        return 50
+    elif chu>='0' && chu<='9'
+        return chu-'0'+51
+    elif chu=='%'
+        return 61
+    elif chu>='A' && chu<='Z'
+        return chu-'A'+62
+    elif chu>='a' && chu<='z'
+        return chu-'a'+62
+    elif chu=='!'
+        return 88
+    elif chu==39    // '
+        return 89
+    else
+        return 0
+
+def getHUDTextDim(text:string) : tuple<width:int;height:int>
+    var X = 0
+    var H = 0
+    for chu in text
+        if chu==' '
+            X += 8
+            continue
+        var index = getHUDCharSpriteIndex(chu)
+        if index==0
+            continue
+        H = max(H,Pictures[index].height)
+        X += Pictures[index].width
+    return [[auto X,H]]
+
+def drawHUDText(x,y:int; text:string; var bmp:Bitmap8# )
+    var X = x
+    for chu in text
+        if chu==' '
+            X += 8
+            continue
+        var index = getHUDCharSpriteIndex(chu)
+        if index==0
+            continue
+        let W = Pictures[index].width
+        drawHUDElement(X,y,W,Pictures[index].height,Pictures[index],bmp)
+        X += W
+
+def drawHUD ( var bmp:Bitmap8# )
+    // health head (24x32)
+    var frame = 0
+    if playerHealth <= 0.
+        frame = 136  // dead
+    elif playerHealth > 1.
+        frame = 137 // >100%
+    else
+        let hpIndex = floori(6.*clamp(1.-playerHealth,0.,1.))
+        frame = floori(playerHoodTime * 3.) + hpIndex*3 + 115
+    drawHUDElement(1,200-33,24,32,Pictures[frame],bmp)
+    // gold and silver keys (8x16)
+    if player.goldKey
+        drawHUDElement(1+24,200-33,8,16,Pictures[102],bmp)
+    if player.silverKey
+        drawHUDElement(1+24+8,200-33,8,16,Pictures[103],bmp)
+    // ammo
+    drawHUDNum(1+24,200-17,player.ammo,bmp)
+    // hud
+    if !empty(hudMessage)
+        let dim = getHUDTextDim(hudMessage)
+        drawHUDText(160-dim.width/2,2,hudMessage,bmp)
+
+def drawVisibility ( var bmp:Bitmap8# )
+    for x in range(64)
+        for y in range(64)
+            var col = visibility_plane[x][y] ? 0u8 : 255u8
+            rast_fillRect(bmp,bmp.size.y - 64*4 - 10 + x*4,10 + y*4,4,4,col)
+    for e in enemies
+        if e.category == Category enemy
+            rast_fillRect(bmp,bmp.size.y - 64*4 - 10 + floori(e.pos.x)*4,10 + floori(e.pos.y)*4,4,4,32u8)
+
+def drawCollision ( var bmp:Bitmap8# )
+    for x in range(64)
+        for y in range(64)
+            var col = collision_plane[x][y] ? 0u8 : 255u8
+            rast_fillRect(bmp, bmp.size.y - 64*4 - 10 + x*4,10 + y*4,4,4,col)
+    for e in enemies
+        if e.category == Category enemy
+            rast_fillRect(bmp, bmp.size.y - 64*4 - 10 + floori(e.pos.x)*4,10 + floori(e.pos.y)*4,4,4,32u8)
+
+def draw ( level:Level; var bmp:Bitmap8# )
+    hudFactor = max(float(bmp.size.y)/200.,1.)
+    pixelWidth = float(bmp.size.x)
+    pixelHeight = float(bmp.size.y)
+    wallHeight = float(pixelWidth) / (2. * fov)
+    zIndex |> resize(bmp.size.x)
+    for vy in visibility_plane
+        for v in vy
+            v = false
+    drawBackground(bmp)
+    drawWalls(level, bmp)
+    drawThings(bmp)
+    if dLevelFade == 0.
+        drawWeapon(bmp)
+        drawHUD(bmp)
+    if DRAW_VISIBILITY
+        drawVisibility(bmp)
+    if DRAW_COLLISION
+        drawCollision(bmp)
+    if DRAW_PLAYER_POSITION
+        let text = "{floori(player.x)} {floori(player.y)}"
+        let dim = getHUDTextDim(text)
+        drawHUDText(160-dim.width/2,200-16,text,bmp)
+
+// ------------------------------------------------------------
+
+def woof3d_main
+    InitFiles()
+    setupLevel(0)
+    levelFade = 0.
+    dLevelFade = LEVEL_FADE_FACTOR
+    play_game_sound(SoundName FART)
+    raster_app_main <| $ ( dt, backbuffer )
+        updateGame(dt)
+        draw(level, backbuffer)
+        set_app_sound_position(player.pos, player.dir)

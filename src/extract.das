@@ -1,4 +1,4 @@
-require files
+require woof3d
 
 require stbimage
 require fio
@@ -53,12 +53,12 @@ def save_level ( level:int )
         let txt = build_string <| $ ( writer )
             for y in 0..64
                 for x in 0..64
-                    writer |> format("%02x", int(Levels[level].plane0[y*64+x]))
+                    writer |> format("%02x", int(Levels[level].plane0[y][x]))
                 writer |> write("\n")
             writer |> write("\n")
             for y in 0..64
                 for x in 0..64
-                    writer |> format("%02x", int(Levels[level].plane1[y*64+x]))
+                    writer |> format("%02x", int(Levels[level].plane1[y][x]))
                 writer |> write("\n")
             writer |> write("\n")
         file |> fwrite(txt)

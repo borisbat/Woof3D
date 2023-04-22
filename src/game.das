@@ -24,17 +24,17 @@ let AGRO_TIME = 20. // they stay agro even if they can't see you for that many s
 let LEVEL_FADE_TIME = 1.
 let LEVEL_FADE_FACTOR = 1.0 / LEVEL_FADE_TIME / 60.
 
-let PAIN_SOUND_RADIUS = 10.
-
-let AGRO_SOUND_RADIUS = 10.
+let PAIN_SOUND_RADIUS = 64.
+let SHOT_SOUND_RADIUS = 64.
+let AGRO_SOUND_RADIUS = 64.
 
 let DOOR_SOUND_PLAYBACK_RATE = 18000
-let DOOR_SOUND_RADIUS = 10.0     // how far away door sound can be heard (in tiles)
+let DOOR_SOUND_RADIUS = 64.      // how far away door sound can be heard (in tiles)
 let DOOR_OPEN_SPEED = 2.0        // how fast door opens (in tiles per second)
 let DOOR_CLOSE_SPPED = 2.0       // how fast door closes (in tiles per second)
 let DOOR_STAYS_CLOSED = 2.0      // how long door stays closed (in seconds)
 
-let SHOT_SOUND_RADIUS = 20.
+
 
 // hud
 
@@ -95,6 +95,8 @@ enum EnemyCategory
     officer
     ss
     mutant
+// bosses
+    hansGrosse
 
 struct public EnemyClass
     enemyCategory : EnemyCategory
@@ -200,7 +202,23 @@ let enemyClasses <- [[EnemyClass
     runSprites <- [{auto 195; 203; 211}],
     deathSprites <- [{auto 228; 229; 230; 232; 233}],
     damageSprites <- [{auto 228; 231; 187}],
-    attackSprites <- [{auto 234; 235; 236; 237; 236; 187}]
+    attackSprites <- [{auto 234; 235; 236; 237; 236; 187}];
+// hansGrosse
+    hp = 800,
+    radius = .4,
+    speed = 0.065 * 0.35,
+    attackDamage = 45,
+    attackDistance = 10.,
+    comfortDistance = 5.,
+    attackFireRate = 2.5,
+    attackDelay = float2(2., 3.),
+    attackSound = SoundName BOSSFIRESND,
+    agroSound = SoundName GUTENTAGSND,
+    spriteIndex = 296,
+    runSprites <- [{auto 296; 297; 298; 299}],
+    deathSprites <- [{auto 304; 305; 306; 303}],
+    // damageSprites <- [{auto 228; 231; 187}],
+    attackSprites <- [{auto 300; 301; 302}]
 ]]
 
 struct public Enemy : Entity
@@ -240,7 +258,8 @@ def takeDamage ( var self:Enemy; DAMAGE:int )
             self |> die()
         else
             if animation == null
-                self |> startAnimation(new Animation(enemyClasses[int(enemyCategory)].damageSprites,false,false))
+                if !empty(enemyClasses[int(enemyCategory)].damageSprites)
+                    self |> startAnimation(new Animation(enemyClasses[int(enemyCategory)].damageSprites,false,false))
             play_game_sound_2d(random_take_damage_snd[ random_int(seed) % 3], float2(cx,cy)+float2(0.5), PAIN_SOUND_RADIUS)
             self |> rotateTowardsPlayer()
 
@@ -261,14 +280,17 @@ def die ( var self:Enemy )
             dropLoot(cx,cy,Collectible MachineGun, 1.)
         elif enemyCategory==EnemyCategory mutant
             dropLoot(cx,cy,Collectible Chaingun, 1.)
+        elif enemyCategory==EnemyCategory hansGrosse
+            dropLoot(cx,cy,Collectible KeyGold, 1., true)
 
-def dropLoot ( X,Y : int; loot:Collectible; chanceToDrop:float ) : bool
+def dropLoot ( X,Y : int; loot:Collectible; chanceToDrop:float; force:bool = false ) : bool
     let drop = random_float(seed)
     if drop <= chanceToDrop
         // drop ammo clip
         let ofs = X+Y*64
         if object_plane[ofs].category != Category nothing
-            return false
+            if !force
+                return false
         let m1 = int(loot)
         object_plane[ofs] = [[Entity
             category = Category prop,
@@ -423,6 +445,7 @@ def trace ( px,py,pdx,pdy,maxDist:float; writeVis:bool ) : tuple<t:float; tx:flo
                     rfy -= dt * dy
                     rfx = 1.
                     cx += stepx
+                    continue
             else
                 // EW door
                 if rfy >= .5 && (rfy - .5) * dx < rfx * dy
@@ -463,6 +486,7 @@ def trace ( px,py,pdx,pdy,maxDist:float; writeVis:bool ) : tuple<t:float; tx:flo
                     rfx -= dt * dx
                     rfy = 1.
                     cy += stepy
+                    continue
         // move to the next cell
         if rfx * dy <= rfy * dx
             // move to next cell horizontally
@@ -586,6 +610,13 @@ let treasureAudio = [[AudioName
 
 def collect ( var self:Player; X,Y:int )
     with self
+    // WE TRIGGER LEVEL SWITCHES HERE AFTER BOSSES
+        // print("{levelIndex} {X} {Y}\n")
+        if levelIndex==8 && Y<8
+            // hans grosse level, we see the 'run away' wall around line 7
+            switchLevel(levelIndex+1)
+            return
+    // WE GO WITH NORMAL PICKUPS
         if object_plane[Y*64+X].category == Category nothing
             return
         var m1 = int(level.plane1[Y*64+X])
@@ -774,12 +805,12 @@ def activate ( var self:Player)
             switchLevel(levelIndex+1)
         elif m0>=90 && m0<=101
             // door
-            if m0==92 || m0==93 && !goldKey
+            if (m0==92 || m0==93) && !goldKey
                 // gold-locked door
                 play_game_audio_2d(AudioName HALTSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS)
                 hudText("GOLD KEY REQUIRED!", 2.)
                 return
-            if m0==94 || m0==95 && !silverKey
+            if (m0==94 || m0==95) && !silverKey
                 // silver-locked door
                 play_game_audio_2d(AudioName HALTSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS)
                 hudText("SILVER KEY REQUIRED!", 2.)
@@ -980,6 +1011,8 @@ def setupLevel ( index:int )
                 var category : EnemyCategory
                 var patrolling = false
                 var orientable = true
+                var ex = x
+                var ey = y
                 if isStandingGuard(m1)
                     category = EnemyCategory guard
                 elif isPatrollingGuard(m1)
@@ -1000,13 +1033,40 @@ def setupLevel ( index:int )
                 elif isPatrollingMutant(m1)
                     category = EnemyCategory mutant
                     patrolling = true
-                // to_log(LOG_INFO, "{x} {y} {m1} {category} {patrolling} {orientable}\n")
+                elif isFakeHitler(m1)
+                    print("FAKE HITLER AT {x},{y}\n")
+                elif isHitler(m1)
+                    print("HITLER AT {x},{y}\n")
+                elif isGeneralFettgesicht(m1)
+                    print("GENERAL FETTGESICHT AT {x},{y}\n")
+                elif isDoctorSchabbs(m1)
+                    print("DOCTOR SCHABBS AT {x},{y}\n")
+                elif isGretelGrosse(m1)
+                    print("GRETEL GROSSE AT {x},{y}\n")
+                elif isHansGrosse(m1)
+                    print("HANS GROSSE AT {x},{y}\n")
+                    category = EnemyCategory hansGrosse
+                    orientable = false
+                    // ey = 30
+                elif isOttoGiftmacher(m1)
+                    print("OTTO GIFTMACHER AT {x},{y}\n")
+                elif isRedPacManGhost(m1)
+                    print("RED PACMAN GHOST AT {x},{y}\n")
+                elif isPinkPacManGhost(m1)
+                    print("PINK PACMAN GHOST AT {x},{y}\n")
+                elif isOrangePacManGhost(m1)
+                    print("ORANGE PACMAN GHOST AT {x},{y}\n")
+                elif isBluePacManGhost(m1)
+                    print("BLUE PACMAN GHOST AT {x},{y}\n")
+                else
+                    print("UNKNOWN ENEMY AT {x},{y}\n")
+                    // to_log(LOG_INFO, "{x} {y} {m1} {category} {patrolling} {orientable}\n")
                 // todo: add bosses
                 var edx, edy : float
                 getEntityDirection(m1 & 3,edx,edy)
-                enemy_plane[x + y * 64] = [[Enemy
-                    cx = x, cy = y,
-                    x = float(x) + 0.5, y = float(y) + 0.5,
+                enemy_plane[ex + ey * 64] = [[Enemy
+                    cx = ex, cy = ey,
+                    x = float(ex) + 0.5, y = float(ey) + 0.5,
                     dox = edx, doy = edy,
                     category = Category enemy,
                     enemyCategory = category,
@@ -1015,30 +1075,6 @@ def setupLevel ( index:int )
                     health = enemyClasses[int(category)].hp,
                     orientable = orientable
                 ]]
-            /*
-            elif m1 >= 108
-
-                elif m1==160
-                    things |> push <| new FakeHitlerEnemy(x,y)
-                elif m1==178
-                    things |> push <| new HitlerEnemy(x,y)
-                elif m1==179
-                    things |> push <| new FettgesichtEnemy(x,y)
-                elif m1==196
-                    things |> push <| new SchabbsEnemy(x,y)
-                elif m1==197
-                    things |> push <| new GretelEnemy(x,y)
-                elif m1==198
-                    things |> push <| new HansEnemy(x,y)
-                elif m1==199
-                    things |> push <| new OttoEnemy(x,y)
-                elif m1>=224 && m1<228
-                    // ghost
-                    var ghost = new Thing(x,y,0)
-                    let spriteIndex = 288 + 2 * (m1-224)
-                    ghost->startAnimation ( new Animation([{int spriteIndex; spriteIndex + 1}], true) )
-                    things |> push <| ghost
-            */
 
 def getEntityOrientation(dx,dy:float)
     if abs(dx) > abs(dy)
@@ -1154,7 +1190,7 @@ def update ( var self:Enemy )
             let xy = float2(cx,cy) + float2(0.5)
             var dxy = normalize(float2(player.x,player.y) - xy)
             var angle = dot(dxy,float2(dox,doy))
-            if angle >= 0.1
+            if !orientable || angle>=0.1
                 if agroTimer == 0.
                     let agroSound = enemyClasses[int(enemyCategory)].agroSound
                     play_game_sound_2d(agroSound, xy, AGRO_SOUND_RADIUS)
@@ -1186,7 +1222,7 @@ def update ( var self:Enemy )
                 running = false
         if running
             if animation == null
-                self |> startAnimation(new Animation(enemyClasses[int(enemyCategory)].runSprites,true,true))
+                self |> startAnimation(new Animation(enemyClasses[int(enemyCategory)].runSprites,true,orientable))
             if !run(self)
                 // if we can't move, we just stand and watch player
                 rotateTowardsPlayer(self)
@@ -1318,7 +1354,13 @@ def updateTimers
                     timer.t -= 1./ 60. * frame_time
                 if timer.t <= 1.
                     if !collision_plane[index]
-                        if enemy_plane[index].category!=Category nothing || player|>isTooCloseToDoor(X, Y)
+                        var enemyTooCloseToDoor = false
+                        for ey in range(Y-1,Y+2)
+                            for ex in range(X-1,X+2)
+                                if enemy_plane[ex + ey * 64].category == Category enemy
+                                    enemyTooCloseToDoor = true
+                                    break
+                        if enemyTooCloseToDoor || player|>isTooCloseToDoor(X, Y)
                             timer.t = DOOR_STAYS_CLOSED
                         else
                             collision_plane[index] = true
@@ -1427,7 +1469,13 @@ def updatePlayer
         ]]
         collision_plane[X + Y * 64] = true
     if is_key_pressed(VK_F10)
-        switchLevel(levelIndex+1)
+        if is_key_pressed(VK_LSHIFT) || is_key_pressed(VK_RSHIFT)
+            if levelIndex<8
+                switchLevel(8)  // HANS GROSSE
+            else
+                switchLevel(18) // DOCTOR SCHABBS
+        else
+            switchLevel(levelIndex+1)
 
 def public updateHud
     hudMessageTime -= 1./60. * frame_time

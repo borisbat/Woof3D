@@ -7,6 +7,12 @@ require entities
 
 require math
 
+let DRAW_PLAYER_POSITION = false
+
+let DRAW_VISIBILITY = false
+
+let DRAW_COLLISION = false
+
 [jit,hint(unsafe_range_check,noalias=level,noalias=bmp)]
 def drawWalls ( level:Level; var bmp:Bitmap8 )
     for i in range(bmp.size.x)
@@ -287,6 +293,34 @@ def drawHUD ( var bmp:Bitmap8 )
         let dim = getHUDTextDim(hudMessage)
         drawHUDText(160-dim.width/2,2,hudMessage,bmp)
 
+def drawDebugRect ( x,y,w,h:int; col:uint8; var bmp:Bitmap8 )
+    unsafe
+        for X in range(x,x+w)
+            for Y in range(y,y+h)
+                bmp.data[X*bmp.size.y+Y] = col
+
+def drawVisibility(var bmp:Bitmap8)
+    for x in range(64)
+        for y in range(64)
+            var col = visibility_plane[x+y*64] ? 0u8 : 255u8
+            drawDebugRect(bmp.size.y - 64*4 - 10 + x*4,10 + y*4,4,4,col,bmp)
+    for e in enemy_plane
+        if e.category == Category enemy
+            var x = floori(e.x)
+            var y = floori(e.y)
+            drawDebugRect(bmp.size.y - 64*4 - 10 + floori(e.x)*4,10 + floori(e.y)*4,4,4,32u8,bmp)
+
+def drawCollision(var bmp:Bitmap8)
+    for x in range(64)
+        for y in range(64)
+            var col = collision_plane[x+y*64] ? 0u8 : 255u8
+            drawDebugRect(bmp.size.y - 64*4 - 10 + x*4,10 + y*4,4,4,col,bmp)
+    for e in enemy_plane
+        if e.category == Category enemy
+            var x = floori(e.x)
+            var y = floori(e.y)
+            drawDebugRect(bmp.size.y - 64*4 - 10 + floori(e.x)*4,10 + floori(e.y)*4,4,4,32u8,bmp)
+
 def public draw ( level:Level; var bmp:Bitmap8 )
     hudFactor = max(float(bmp.size.y)/200.,1.)
     pixelWidth = float(bmp.size.x)
@@ -301,6 +335,14 @@ def public draw ( level:Level; var bmp:Bitmap8 )
     if dLevelFade == 0.
         drawWeapon(bmp)
         drawHUD(bmp)
+    if DRAW_VISIBILITY
+        drawVisibility(bmp)
+    if DRAW_COLLISION
+        drawCollision(bmp)
+    if DRAW_PLAYER_POSITION
+        let text = "{floori(player.x)} {floori(player.y)}"
+        let dim = getHUDTextDim(text)
+        drawHUDText(160-dim.width/2,200-16,text,bmp)
 
 
 

@@ -19,9 +19,9 @@ def drawWalls ( level:Level; var bmp:Bitmap8 )
         // current column position on the camera plane
         let shift = fov * (float(i << 1) - pixelWidth) / (pixelWidth)
         // direction of the ray
-        var dx = player.dx - shift * player.dy
-        var dy = player.dy + shift * player.dx
-        var tres = trace(player.x,player.y,dx,dy,FLT_MAX,true)
+        var dx = player.dir.x - shift * player.dir.y
+        var dy = player.dir.y + shift * player.dir.x
+        var tres = trace(player.pos.x,player.pos.y,dx,dy,FLT_MAX,true)
         zIndex[i] = tres.t
         drawWallPixels(i,tres.t,tres.tx,WallPics[tres.textureIndex],bmp) // causes bug in jit. why?
 
@@ -60,7 +60,7 @@ def isVisible(x,y:float)
     let t = floori(float2(x,y)+float2(0.45))
     for Y in range(f.y,t.y+1)
         for X in range(f.x,t.x+1)
-            if visibility_plane[Y*64+X]
+            if visibility_plane[OFS(X,Y)]
                 return true
     return false
 
@@ -69,28 +69,26 @@ def drawThings ( var bmp:Bitmap8 )
     var things : array<Entity?>
     things |> reserve ( enemies|>length + objects|>length )
     for enemy in enemies
-        var prc = getPlayerRelativeCoordinates(enemy.x,enemy.y)
-        if prc.rx>0.05 && abs(prc.ry)<prc.rx + 1.
-            if visibility_plane[floori(enemy.y)*64+floori(enemy.x)]
+        var prc = getPlayerRelativeCoordinates(enemy.pos)
+        if prc.rpos.x>0.05 && abs(prc.rpos.y)<prc.rpos.x + 1.
+            if visibility_plane[OFS(floori(enemy.pos))]
                 enemy.prc = prc
                 things |> push ( enemy )
     for object in objects
-        var prc = getPlayerRelativeCoordinates(object.x,object.y)
-        if prc.rx>0.05 && abs(prc.ry)<prc.rx + 1.
-            if visibility_plane[floori(object.y)*64+floori(object.x)]
+        var prc = getPlayerRelativeCoordinates(object.pos)
+        if prc.rpos.x>0.05 && abs(prc.rpos.y)<prc.rpos.x + 1.
+            if visibility_plane[OFS(floori(object.pos))]
                 object.prc = prc
                 things |> push ( object )
     things |> sort <| $ ( a,b : Entity? )
         if a.category != b.category
-            let aix = floori(a.x)
-            let aiy = floori(a.y)
-            let bix = floori(b.x)
-            let biy = floori(b.y)
-            if aix==bix && aiy==biy
+            let ai = floori(a.pos)
+            let bi = floori(b.pos)
+            if ai==bi
                 return int(a.category) < int(b.category)
-        return a.prc.rx > b.prc.rx
+        return a.prc.rpos.x > b.prc.rpos.x
     for thing in things
-        drawThing(thing.prc.rx,thing.prc.ry,thing.prc.orx,thing.prc.ory,*thing,bmp)
+        drawThing(thing.prc.rpos.x,thing.prc.rpos.y,thing.prc.opos.x,thing.prc.opos.y,*thing,bmp)
 
 def getEntityAngle( Direction : float2 ) : int
     var EntityAngle = floori((8.0f * atan2(Direction.y, Direction.x) / (2.0f * PI)) + 0.5f)
@@ -107,7 +105,7 @@ def drawThing(rx,ry,orx,ory:float; OBJ:Entity; var bmp:Bitmap8 )
     var index = OBJ.spriteIndex
     if OBJ.orientable && (OBJ.animation==null || OBJ.animation.orientable)
         let PlayerAngle = getEntityAngle(float2(orx,ory))
-        var Angle = getEntityAngle(float2(OBJ.dox, OBJ.doy))
+        var Angle = getEntityAngle(OBJ.dir)
         index = OBJ.spriteIndex + (Angle - PlayerAngle + 12) % 8
     drawSprite(tx, ty, th, rx, Sprites[index], bmp)
 
@@ -295,24 +293,20 @@ def drawDebugRect ( x,y,w,h:int; col:uint8; var bmp:Bitmap8 )
 def drawVisibility(var bmp:Bitmap8)
     for x in range(64)
         for y in range(64)
-            var col = visibility_plane[x+y*64] ? 0u8 : 255u8
+            var col = visibility_plane[OFS(x,y)] ? 0u8 : 255u8
             drawDebugRect(bmp.size.y - 64*4 - 10 + x*4,10 + y*4,4,4,col,bmp)
     for e in enemies
         if e.category == Category enemy
-            var x = floori(e.x)
-            var y = floori(e.y)
-            drawDebugRect(bmp.size.y - 64*4 - 10 + floori(e.x)*4,10 + floori(e.y)*4,4,4,32u8,bmp)
+            drawDebugRect(bmp.size.y - 64*4 - 10 + floori(e.pos.x)*4,10 + floori(e.pos.y)*4,4,4,32u8,bmp)
 
 def drawCollision(var bmp:Bitmap8)
     for x in range(64)
         for y in range(64)
-            var col = collision_plane[x+y*64] ? 0u8 : 255u8
+            var col = collision_plane[OFS(x,y)] ? 0u8 : 255u8
             drawDebugRect(bmp.size.y - 64*4 - 10 + x*4,10 + y*4,4,4,col,bmp)
     for e in enemies
         if e.category == Category enemy
-            var x = floori(e.x)
-            var y = floori(e.y)
-            drawDebugRect(bmp.size.y - 64*4 - 10 + floori(e.x)*4,10 + floori(e.y)*4,4,4,32u8,bmp)
+            drawDebugRect(bmp.size.y - 64*4 - 10 + floori(e.pos.x)*4,10 + floori(e.pos.y)*4,4,4,32u8,bmp)
 
 def draw ( level:Level; var bmp:Bitmap8 )
     hudFactor = max(float(bmp.size.y)/200.,1.)

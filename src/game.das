@@ -34,8 +34,6 @@ let DOOR_OPEN_SPEED = 2.0        // how fast door opens (in tiles per second)
 let DOOR_CLOSE_SPPED = 2.0       // how fast door closes (in tiles per second)
 let DOOR_STAYS_CLOSED = 2.0      // how long door stays closed (in seconds)
 
-
-
 // hud
 
 var playerHoodTime = 0.
@@ -80,10 +78,8 @@ enum Category
     enemy
 
 struct PlayerRelativeCoordinates
-    rx:float
-    ry:float
-    orx:float
-    ory:float
+    rpos:float2
+    opos:float2
 
 struct Entity
     category : Category
@@ -91,8 +87,8 @@ struct Entity
     spriteIndex  : int
     animation    : Animation?
     orientable   : bool
-    dox, doy     : float
-    x, y         : float
+    pos          : float2
+    dir          : float2
     prc          : PlayerRelativeCoordinates
 
 var objects : array<Entity?>
@@ -236,7 +232,7 @@ struct Enemy : Entity
     attackTimer : float = 0.
     agroTimer : float = 0.
     running : bool = false
-    run_x, run_y : float
+    run : float2
     radius : float
 
 var enemies : array<Enemy?>
@@ -268,7 +264,7 @@ def takeDamage ( var self:Enemy; DAMAGE:int )
             if animation == null
                 if !empty(enemyClasses[int(enemyCategory)].damageSprites)
                     self |> startAnimation(new Animation(enemyClasses[int(enemyCategory)].damageSprites,false,false))
-            play_game_sound_2d(random_take_damage_snd[ random_int(seed) % 3], float2(x,y), PAIN_SOUND_RADIUS)
+            play_game_sound_2d(random_take_damage_snd[ random_int(seed) % 3], pos, PAIN_SOUND_RADIUS)
             self |> rotateTowardsPlayer()
 
 def die ( var self:Enemy )
@@ -276,39 +272,38 @@ def die ( var self:Enemy )
         health = -100
         orientable = false
         self |> startAnimation(new Animation(enemyClasses[int(enemyCategory)].deathSprites))
-        play_game_sound_2d(random_death_snd[ random_int(seed) % 3], float2(x,y), PAIN_SOUND_RADIUS)
+        play_game_sound_2d(random_death_snd[ random_int(seed) % 3], pos, PAIN_SOUND_RADIUS)
         if enemyCategory==EnemyCategory dog
             // self |> dropLoot(cx,cy,Collectible dogBone)
             pass
         elif enemyCategory==EnemyCategory guard
-            dropLoot(floori(x),floori(y),Collectible AmmoClip, player.ammo < 8 ? 1. : 0.25)
+            dropLoot(pos,Collectible AmmoClip, player.ammo < 8 ? 1. : 0.25)
         elif enemyCategory==EnemyCategory officer
-            dropLoot(floori(x),floori(y),Collectible AmmoClip, player.ammo < 8 ? 1. : 0.5)
+            dropLoot(pos,Collectible AmmoClip, player.ammo < 8 ? 1. : 0.5)
         elif enemyCategory==EnemyCategory ss
-            dropLoot(floori(x),floori(y),Collectible MachineGun, 1.)
+            dropLoot(pos,Collectible MachineGun, 1.)
         elif enemyCategory==EnemyCategory mutant
-            dropLoot(floori(x),floori(y),Collectible Chaingun, 1.)
+            dropLoot(pos,Collectible Chaingun, 1.)
         elif enemyCategory==EnemyCategory hansGrosse
-            dropLoot(floori(x),floori(y),Collectible KeyGold, 1., true)
+            dropLoot(pos,Collectible KeyGold, 1., true)
 
-def dropLoot ( X,Y : int; loot:Collectible; chanceToDrop:float; force:bool = false ) : bool
+def dropLoot ( XY : float2; loot:Collectible; chanceToDrop:float; force:bool = false ) : bool
     let drop = random_float(seed)
     if drop <= chanceToDrop
         objects |> push <| new [[Entity
             category = Category prop,
             mapItem = int(loot),
             spriteIndex = int(loot)-21,
-            x = float(X) + 0.5, // TODO: add random offset?
-            y = float(Y) + 0.5
+            pos = XY                        // TODO: randomize position?
         ]]
     return true
 
-def getPlayerRelativeCoordinates ( ox,oy:float )
-    let orx = ox - player.x
-    let ory = oy - player.y
-    let rx =  orx * player.dx + ory * player.dy
-    let ry = -orx * player.dy + ory * player.dx
-    return [[PlayerRelativeCoordinates rx=rx, ry=ry, orx=orx, ory=ory]]
+def getPlayerRelativeCoordinates ( xy:float2 )
+    let o = xy - player.pos
+    return [[PlayerRelativeCoordinates
+        rpos=float2(o.x * player.dir.x + o.y * player.dir.y, -o.x * player.dir.y + o.y * player.dir.x),
+        opos=o
+    ]]
 
 [jit,hint(unsafe_range_check)]
 def trace ( px,py,pdx,pdy,maxDist:float; writeVis:bool ) : tuple<t:float; tx:float; textureIndex:int>
@@ -344,15 +339,15 @@ def trace ( px,py,pdx,pdy,maxDist:float; writeVis:bool ) : tuple<t:float; tx:flo
     // ray casting loop
     while t < maxDist
         if writeVis
-            visibility_plane[cx+cy*64] = true
-        m0 = int(level.plane0[cx+cy*64])
+            visibility_plane[OFS(cx,cy)] = true
+        m0 = level.plane0[OFS(cx,cy)]
         if m0 <= 63
             // hit a wall
             var wallShift = 0.
-            let m1 = int(level.plane1[cx+cy*64])
+            let m1 = level.plane1[OFS(cx,cy)]
             if m1 == 98
                 // pushwall
-                assume timer = timer_plane[cx+cy*64]
+                assume timer = timer_plane[OFS(cx,cy)]
                 if timer.active
                     wallShift = timer.t
                     if timer.dx != 0
@@ -401,7 +396,7 @@ def trace ( px,py,pdx,pdy,maxDist:float; writeVis:bool ) : tuple<t:float; tx:flo
         elif m0 <= 101
             // hit a door
             var doorShfit = 0.
-            assume timer = timer_plane[cx+cy*64]
+            assume timer = timer_plane[OFS(cx,cy)]
             if timer.active
                 doorShfit = timer.t
             if (m0 & 1) == 0
@@ -510,8 +505,8 @@ enum WeaponType
     chainGun = 3
 
 struct Player
-    x, y : float
-    dx, dy : float
+    pos : float2
+    dir : float2
     health : int = 100
     silverKey : bool
     goldKey : bool
@@ -545,55 +540,50 @@ def switchWeapon ( var self:Player; WEAPON_TYPE:WeaponType )
         weaponType = WEAPON_TYPE
         weaponSprite = 416 + int(weaponType) * 5
 
-def canMoveTo ( self:Player; X,Y:float )
+def canMoveTo ( self:Player; XY:float2 )
     for enemy in enemies
         if enemy.category == Category enemy
-            let dist = length(float2(enemy.x,enemy.y) - float2(X,Y))
+            let dist = length(enemy.pos - XY)
             if dist < self.radius + enemy.radius
                 return false
-    return canMoveTo(X,Y,self.radius)
+    return canMoveTo(XY,self.radius)
 
-def canMoveTo ( X,Y,r:float )
-    let fx = X % 1.
-    let ix = floori(X)
-    let fy = Y % 1.
-    let iy = floori(Y)
-    if collision_plane[iy*64+ix]
+def canMoveTo ( XY:float2;r:float )
+    let f = fract(XY)
+    let i = floori(XY)
+    if collision_plane[OFS(i)]
         return false
-    if fx < r
-        if collision_plane[iy*64+ix-1]
+    if f.x < r
+        if collision_plane[OFS(i.x-1,i.y)]
             return false
-        if fy < r && collision_plane[(iy-1)*64+ix-1]
+        if f.y < r && collision_plane[OFS(i.x-1,i.y-1)]
             return false
-        if fy > 1.-r && collision_plane[(iy+1)*64+ix-1]
+        if f.y > 1.-r && collision_plane[OFS(i.x-1,i.y+1)]
             return false
-    if fx > 1.-r
-        if collision_plane[iy*64+ix+1]
+    if f.x > 1.-r
+        if collision_plane[OFS(i.x+1,i.y)]
             return false
-        if fy < r && collision_plane[(iy-1)*64+ix+1]
+        if f.y < r && collision_plane[OFS(i.x+1,i.y-1)]
             return false
-        if fy > 1.-r && collision_plane[(iy+1)*64+ix+1]
+        if f.y > 1.-r && collision_plane[OFS(i.x+1,i.y+1)]
             return false
-    if fy < r && collision_plane[(iy-1)*64+ix]
+    if f.y < r && collision_plane[OFS(i.x,i.y-1)]
         return false
-    if fy > 1.-r && collision_plane[(iy+1)*64+ix]
+    if f.y > 1.-r && collision_plane[OFS(i.x,i.y+1)]
         return false
     return true
 
 def move ( var self:Player; length,sideways:float )
     with self
-        let oldx = floori(x)
-        let oldy = floori(y)
-        let X = x + dx * length - dy * sideways
-        let Y = y + dy * length + dx * sideways
-        if self |> canMoveTo(X, y)
-            x = X
-        if self |> canMoveTo(x, Y)
-            y = Y
-        let newx = floori(x)
-        let newy = floori(y)
-        if newx != oldx || newy != oldy
-            player |> collect(newx, newy)
+        let oldxy = floori(pos)
+        let XY = pos + dir*length + dir.yx*float2(-sideways,sideways)
+        if self |> canMoveTo(float2(XY.x, pos.y))
+            pos.x = XY.x
+        if self |> canMoveTo(float2(pos.x, XY.y))
+            pos.y = XY.y
+        let newxy = floori(pos)
+        if newxy != oldxy
+            player |> collect(newxy)
 
 let treasureAudio = [[AudioName
     AudioName BONUS1SND;
@@ -601,18 +591,18 @@ let treasureAudio = [[AudioName
     AudioName BONUS3SND;
     AudioName BONUS3SND]]
 
-def collect ( var self:Player; X,Y:int )
+def collect ( var self:Player; XY:int2 )
     with self
     // WE TRIGGER LEVEL SWITCHES HERE AFTER BOSSES
         // print("{levelIndex} {X} {Y}\n")
-        if levelIndex==8 && Y<8
+        if levelIndex==8 && XY.y<8
             // hans grosse level, we see the 'run away' wall around line 7
             switchLevel(levelIndex+1)
             return
     // WE GO WITH NORMAL PICKUPS
         var collected : array<int>
         for obj,index in objects,count()
-            if !(floori(obj.x)==X && floori(obj.y)==Y)
+            if floori(obj.pos)!=XY
                 continue
             var m1 = obj.spriteIndex + 21
             if isCollectible(m1)
@@ -669,12 +659,9 @@ def collect ( var self:Player; X,Y:int )
 
 def turn ( var self:Player; alpha:float )
     with self
-        let DX = dx * cos(alpha) - dy * sin(alpha)
-        dy = dx * sin(alpha) + dy * cos(alpha)
-        dx = DX
-        let len = sqrt(dx*dx + dy*dy)
-        dx /= len
-        dy /= len
+        let sa = sin(alpha)
+        let ca = cos(alpha)
+        dir = normalize(float2(dir.x * ca - dir.y * sa,dir.x * sa + dir.y * ca))
 
 def update ( var self:Player )
     with self
@@ -735,10 +722,10 @@ def update ( var self:Player )
         if is_key_pressed(VK_LCONTROL) || is_key_pressed(VK_RCONTROL)
             player |> shoot()
 
-def alert ( x,y,radius:float )
+def alert ( xy:float2; radius:float )
     for enemy in enemies
         if enemy.category == Category enemy
-            if length(float2(enemy.x,enemy.y) - float2(x,y)) < radius
+            if length(enemy.pos - xy) < radius
                 enemy.agroTimer = AGRO_TIME
 
 def shoot ( var self:Player )
@@ -751,7 +738,7 @@ def shoot ( var self:Player )
             else
                 ammo --
                 play_game_sound(weaponSounds[int(weaponType)])
-                alert(x,y,SHOT_ALERT_RADIUS)
+                alert(pos,SHOT_ALERT_RADIUS)
             weaponAnimation = new Animation([{for frame in range(4); frame+416+int(weaponType)*5}])
             var d = zIndex[int(pixelWidth) / 2]
             if weaponType == WeaponType knife
@@ -759,56 +746,54 @@ def shoot ( var self:Player )
             for enemy in enemies
                 if enemy.category != Category enemy
                     continue
-                if !visibility_plane [floori(enemy.y)*64+floori(enemy.x)]
+                if !visibility_plane [OFS(floori(enemy.pos))]
                     continue
-                var prc = getPlayerRelativeCoordinates(enemy.x, enemy.y)
-                if prc.rx < 0.
+                var prc = getPlayerRelativeCoordinates(enemy.pos)
+                if prc.rpos.x < 0.
                     continue
-                if prc.rx >= d
+                if prc.rpos.x >= d
                     continue
-                if abs(prc.ry) <= .3
+                if abs(prc.rpos.y) <= .3
                     *enemy |> takeDamage(weaponDamage[int(weaponType)])
 
-def isTooCloseToDoor(var self:Player; X,Y:int)
+def isTooCloseToDoor ( var self:Player; XY:int2 )
     with self
-        let ix = floori(x)
-        let iy = floori(y)
-        if (X==ix) && (Y==iy)
+        if XY==floori(pos)
             return true
-        if abs(float(X)+0.5-x)<=radius+0.5 && abs(float(Y)+0.5-y)<=radius+0.5
+        let fxy = abs(float2(XY)+float2(0.5)-pos)
+        let rext = radius + 0.5
+        if fxy.x<=rext && fxy.y<=rext
             return true
         return false
 
-def activate ( var self:Player)
+def activate ( var self:Player )
     with self
-        var X = floori(x)
-        var Y = floori(y)
-        var DX = 0
-        var DY = 0
-        if abs(dx) >= abs(dy)
-            DX = dx >= 0. ? 1 : -1
-            X += DX
+        var XY = floori(pos)
+        var DXY : int2
+        if abs(dir.x) >= abs(dir.y)
+            DXY.x = dir.x >= 0. ? 1 : -1
+            XY.x += DXY.x
         else
-            DY = dy >= 0. ? 1 : -1
-            Y += DY
-        let m0 = int(level.plane0[Y*64+X])
-        let m1 = int(level.plane1[Y*64+X])
-        if m0==21 && DX!=0
+            DXY.y = dir.y >= 0. ? 1 : -1
+            XY.y += DXY.y
+        let m0 = level.plane0[OFS(XY)]
+        let m1 = level.plane1[OFS(XY)]
+        if m0==21 && DXY.x!=0
             // elevator
             switchLevel(levelIndex+1)
         elif m0>=90 && m0<=101
             // door
             if (m0==92 || m0==93) && !goldKey
                 // gold-locked door
-                play_game_audio_2d(AudioName HALTSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS)
+                play_game_audio_2d(AudioName HALTSND, float2(XY)+float2(0.5), DOOR_SOUND_RADIUS)
                 hudText("GOLD KEY REQUIRED!", 2.)
                 return
             if (m0==94 || m0==95) && !silverKey
                 // silver-locked door
-                play_game_audio_2d(AudioName HALTSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS)
+                play_game_audio_2d(AudioName HALTSND, float2(XY)+float2(0.5), DOOR_SOUND_RADIUS)
                 hudText("SILVER KEY REQUIRED!", 2.)
                 return
-            assume timer = timer_plane[Y*64+X]
+            assume timer = timer_plane[OFS(XY)]
             if !timer.active
                 timer = [[Timer
                     t = 0.,
@@ -816,30 +801,30 @@ def activate ( var self:Player)
                     active = true,
                     isDoor = true
                 ]]
-                play_game_sound_2d(SoundName OPENDOORSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS, DOOR_SOUND_PLAYBACK_RATE)
+                play_game_sound_2d(SoundName OPENDOORSND, float2(XY)+float2(0.5), DOOR_SOUND_RADIUS, DOOR_SOUND_PLAYBACK_RATE)
         elif m1 == 98
             // pushwall
-            assume timer = timer_plane[Y*64+X]
-            if !timer.active && int(level.plane0[(Y+DY)*64+X+DX]) >= 106
+            assume timer = timer_plane[OFS(XY)]
+            if !timer.active && level.plane0[OFS(XY+DXY)] >= 106
                 // there is no active timer for this wall, and it can move backwards
                 timer = [[Timer
                     t = 0.,
-                    dx = DX,
-                    dy = DY,
+                    dx = DXY.x,
+                    dy = DXY.y,
                     steps = 2,
                     opening = true,
                     active = true,
                     isWall = true
                 ]]
-                play_game_sound_2d(SoundName OPENDOORSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS)
+                play_game_sound_2d(SoundName OPENDOORSND, float2(XY)+float2(0.5), DOOR_SOUND_RADIUS)
         else
-            assume timer = timer_plane[Y*64+X]
+            assume timer = timer_plane[OFS(XY)]
             if !timer.active
                 timer = [[Timer
                     t = 0.5,
                     active = true
                 ]]
-                play_game_audio_2d(AudioName DONOTHINGSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS)
+                play_game_audio_2d(AudioName DONOTHINGSND, float2(XY)+float2(0.5), DOOR_SOUND_RADIUS)
 
 def clearKeys ( var self:Player )
     with self
@@ -965,30 +950,28 @@ def setupLevel ( index:int )
     for y in range(64)
         for x in range(64)
             // structual
-            let m0 = int(level.plane0[x + y * 64])
+            let m0 = level.plane0[OFS(x,y)]
             if m0 <= 63
                 // wall
-                collision_plane[x + y * 64] = true
+                collision_plane[OFS(x,y)] = true
             elif 90 <= m0 && m0 <= 101
                 // door
-                collision_plane[x + y * 64] = true
+                collision_plane[OFS(x,y)] = true
             // entities
-            let m1 = int(level.plane1[x + y * 64])
+            let m1 = level.plane1[OFS(x,y)]
             if isPlayer(m1)
                 // player
-                player.x = float(x) + 0.5
-                player.y = float(y) + 0.5
-                getPlayerDirection(m1-19,player.dx,player.dy)
+                player.pos = float2(x,y) + float2(0.5)
+                getPlayerDirection(m1-19,player.dir.x,player.dir.y)
             elif isProp(m1)
                 objects |> push <| new [[Entity
                     category = Category prop,
                     mapItem = m1,
                     spriteIndex = m1-21,
-                    x = float(x) + 0.5,
-                    y = float(y) + 0.5
+                    pos = float2(x,y) + float2(0.5)
                 ]]
                 if isBlocking(m1)
-                    collision_plane[x + y * 64] = true
+                    collision_plane[OFS(x,y)] = true
             elif isPushWall(m1)
                 pass
                 // pushwall
@@ -999,8 +982,7 @@ def setupLevel ( index:int )
                     category = Category prop,
                     mapItem = 95 - 21,
                     spriteIndex = 95,
-                    x = float(x) + 0.5,
-                    y = float(y) + 0.5
+                    pos = float2(x,y) + float2(0.5)
                 ]]
             elif !CHEAT_DISABLE_ENEMIES && isEnemy(m1)   // disabled enemies for now
                 var category : EnemyCategory
@@ -1060,8 +1042,8 @@ def setupLevel ( index:int )
                 var edx, edy : float
                 getEntityDirection(m1 & 3,edx,edy)
                 enemies |> push <| new [[Enemy
-                    x = float(ex) + 0.5, y = float(ey) + 0.5,
-                    dox = edx, doy = edy,
+                    pos = float2(ex,ey) + float2(0.5),
+                    dir = float2(edx, edy),
                     category = Category enemy,
                     enemyCategory = category,
                     patrolling = patrolling,
@@ -1072,23 +1054,15 @@ def setupLevel ( index:int )
                     orientable = orientable
                 ]]
 
-def getEntityOrientation(dx,dy:float)
-    if abs(dx) > abs(dy)
-        return dx > 0. ? 1 : 3
-    else
-        return dy > 0. ? 2 : 0
-
 def rotateTowardsPlayer ( var self:Enemy )
-    let dxy = normalize(float2(player.x,player.y) - float2(self.x,self.y))
-    self.dox = dxy.x
-    self.doy = dxy.y
+    self.dir = normalize(player.pos - self.pos)
 
 def shoot ( var self:Enemy )
     with self
-        var dxy = float2(player.x,player.y) - float2(x,y)
+        var dxy = player.pos - pos
         let dist = length(dxy)
         dxy /= dist
-        let tres = trace(x,y,dxy.x,dxy.y,dist,false)
+        let tres = trace(pos.x,pos.y,dxy.x,dxy.y,dist,false)
         if tres.t >= dist
             let attackDamage = enemyClasses[int(enemyCategory)].attackDamage
             let attackDistance = enemyClasses[int(enemyCategory)].attackDistance
@@ -1106,76 +1080,69 @@ def attack ( var self:Enemy )
         running = false
         let fireRate = eclass.attackFireRate / 16.
         self |> startAnimation(new Animation(eclass.attackSprites,false,false,fireRate))
-        play_game_sound_2d(eclass.attackSound, float2(x,y), PAIN_SOUND_RADIUS)
+        play_game_sound_2d(eclass.attackSound, pos, PAIN_SOUND_RADIUS)
         rotateTowardsPlayer(self)
         self |> shoot()
 
-def canMoveTo ( self:Enemy; X,Y:float )
+def canMoveTo ( self:Enemy; XY:float2 )
     with self
-        let dplayer = length(float2(player.x,player.y) - float2(X,Y))
+        let dplayer = length(player.pos - XY)
         if (dplayer < (radius + player.radius))
             // can't move into player slot, period
             return false
-        return canMoveTo(X,Y,radius)
+        return canMoveTo(XY,radius)
 
 def move ( var self:Enemy; length,sideways:float )
     with self
-        let oldx = x
-        let oldy = y
-        let X = x + dox * length - doy * sideways
-        let Y = y + doy * length + dox * sideways
-        if self |> canMoveTo(X, y)
-            x = X
-        if self |> canMoveTo(x, Y)
-            y = Y
-        let newcx = floori(x)
-        let newcy = floori(y)
-        // we can't move into player
-        let dplayer = length(float2(player.x,player.y) - float2(x,y))
-        let pcx = floori(player.x)
-        let pcy = floori(player.y)
-        if (newcx==pcx && newcy==pcy) || (dplayer < radius + player.radius)
-            x = oldx
-            y = oldy
+        let oldxy = pos
+        let XY = pos + dir*length + dir.yx*float2(-sideways,sideways)
+        if self |> canMoveTo(float2(XY.x, pos.y))
+            pos.x = XY.x
+        if self |> canMoveTo(float2(pos.x, XY.y))
+            pos.y = XY.y
+        let newxy = floori(pos)
+        let pcxy = floori(player.pos)
+        let dplayer = length(player.pos - pos)
+        if (newxy==pcxy) || (dplayer < radius + player.radius)
+            pos = oldxy
             return
 
-def getPrimaryDirection(dx,dy:float) : int2
-    if abs(dx) > abs(dy)
-        return dx > 0. ? int2(1,0) : int2(-1,0)
+def getPrimaryDirection(dir:float2) : int2
+    if abs(dir.x) > abs(dir.y)
+        return dir.x > 0. ? int2(1,0) : int2(-1,0)
     else
-        return dy > 0. ? int2(0,1) : int2(0,-1)
+        return dir.y > 0. ? int2(0,1) : int2(0,-1)
 
-def getSecondaryDirection(dx,dy:float) : int2
-    if abs(dx) > abs(dy)
-        return dy > 0. ? int2(0,1) : int2(0,-1)
+def getSecondaryDirection(dir:float2) : int2
+    if abs(dir.x) > abs(dir.y)
+        return dir.y > 0. ? int2(0,1) : int2(0,-1)
     else
-        return dx > 0. ? int2(1,0) : int2(-1,0)
+        return dir.x > 0. ? int2(1,0) : int2(-1,0)
 
 def update ( var self:Enemy )
     with self
         attackTimer = max ( attackTimer - 1. / 60. * frame_time, 0. )
         agroTimer = max ( agroTimer - 1. / 60. * frame_time, 0. )
         // agro resets if we see the player regardless of what we are doing
-        if visibility_plane[floori(x) + floori(y) * 64]   // player sees us, so we may (or may not) be able to see them
-            let xy = float2(x,y)
-            var dxy = normalize(float2(player.x,player.y) - xy)
-            var angle = dot(dxy,float2(dox,doy))
+        if visibility_plane[OFS(floori(pos))]   // player sees us, so we may (or may not) be able to see them
+            var dxy = normalize(player.pos - pos)
+            var angle = dot(dxy,dir)
             if !orientable || angle>=0.1
                 if agroTimer == 0.
                     let agroSound = enemyClasses[int(enemyCategory)].agroSound
-                    play_game_sound_2d(agroSound, xy, AGRO_SOUND_RADIUS)
+                    play_game_sound_2d(agroSound, pos, AGRO_SOUND_RADIUS)
                 agroTimer = AGRO_TIME
         if animation == null || running
-            if agroTimer!=0. && attackTimer==0. && player.health>0 && visibility_plane[floori(x) + floori(y) * 64]
+            if agroTimer!=0. && attackTimer==0. && player.health>0 && visibility_plane[OFS(floori(pos))]
                 // we try to shoot, if we are at the right distance
-                let dist = length(float2(player.x,player.y) - float2(x,y))
+                let dist = length(player.pos - pos)
                 let attackDistance = enemyClasses[int(enemyCategory)].attackDistance
                 if dist>0. && dist<=attackDistance
                     self |> attack()
                     return
-            if agroTimer!=0. && player.health>0 && visibility_plane[floori(x) + floori(y) * 64]
+            if agroTimer!=0. && player.health>0 && visibility_plane[OFS(floori(pos))]
                 // we rotate towards player
-                let dist = length(float2(player.x,player.y) - float2(x,y))
+                let dist = length(player.pos - pos)
                 let comfortDistance = enemyClasses[int(enemyCategory)].comfortDistance
                 if dist > comfortDistance
                     // if we too far, we run
@@ -1203,48 +1170,40 @@ def update ( var self:Enemy )
 def run ( var self:Enemy )
     with self
         let speed = enemyClasses[int(enemyCategory)].speed * frame_time
-        var tgt_x, tgt_y : float
-        if run_x==0.
-            tgt_x = player.x
-            tgt_y = player.y
+        var tgt : float2
+        if run.x==0.
+            tgt = player.pos
         else
-            tgt_x = run_x
-            tgt_y = run_y
-        var runDir = float2(tgt_x,tgt_y)-float2(x,y)
+            tgt = run
+        var runDir = tgt-pos
         let dist = length(runDir)
         runDir /= dist
-        if run_x!=0.
+        if run.x!=0.
             if dist<=speed
                 // we reached the side target
-                x = run_x
-                y = run_y
-                run_x = 0.
-                run_y = 0.
+                pos = run
+                run = float2(0.)
                 return true
             else
                 // running to side target (todo: check if it became taken)
-                dox = runDir.x
-                doy = runDir.y
+                dir = runDir
                 self |> move(speed, 0.)
                 return true
-        var mainPos = float2(x,y) + runDir * 0.5
-        if self |> canMoveTo( mainPos.x, mainPos.y )
-            dox = runDir.x
-            doy = runDir.y
+        var mainPos = pos + runDir * 0.5
+        if self |> canMoveTo( mainPos )
+            dir = runDir
             self |> move(speed, 0.)
             return true
         // we pick side target
-        var primDir = getPrimaryDirection(runDir.x,runDir.y)
-        var primPos = float2(floor(x),floor(y)) + float2(0.5) + float2(primDir.x,primDir.y)
-        if self |> canMoveTo( primPos.x, primPos.y )
-            run_x = primPos.x
-            run_y = primPos.y
+        var primDir = getPrimaryDirection(runDir)
+        var primPos = floor(pos) + float2(0.5) + float2(primDir)
+        if self |> canMoveTo( primPos )
+            run = primPos
             return true
-        var secDir = getSecondaryDirection(runDir.x,runDir.y)
-        var secPos = float2(floor(x),floor(y)) + float2(0.5) + float2(secDir.x,secDir.y)
-        if self |> canMoveTo( secPos.x, secPos.y )
-            run_x = secPos.x
-            run_y = secPos.y
+        var secDir = getSecondaryDirection(runDir)
+        var secPos = floor(pos) + float2(0.5) + float2(secDir)
+        if self |> canMoveTo( secPos )
+            run = secPos
             return true
         return false
 
@@ -1275,8 +1234,7 @@ def updateTimers
     for timer,index in timer_plane,count()
         if !timer.active
             continue
-        let X = index & 63
-        let Y = index >> 6
+        let XY = int2(index & 63,index >> 6)
         if timer.isDoor
             if timer.opening
                 if timer.t < 1.
@@ -1298,14 +1256,15 @@ def updateTimers
                         var enemyTooCloseToDoor = false
                         for enemy in enemies
                             if enemy.category == Category enemy
-                                if abs(floori(enemy.x)-X)<=1 && abs(floori(enemy.y)-Y)<=1
+                                let edist = abs(floori(enemy.pos)-XY)
+                                if edist.x<=1 && edist.y<=1
                                     enemyTooCloseToDoor = true
                                     break
-                        if enemyTooCloseToDoor || player|>isTooCloseToDoor(X, Y)
+                        if enemyTooCloseToDoor || player|>isTooCloseToDoor(XY)
                             timer.t = DOOR_STAYS_CLOSED
                         else
                             collision_plane[index] = true
-                            play_game_sound_2d(SoundName CLOSEDOORSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS, DOOR_SOUND_PLAYBACK_RATE)
+                            play_game_sound_2d(SoundName CLOSEDOORSND, float2(XY)+float2(0.5), DOOR_SOUND_RADIUS, DOOR_SOUND_PLAYBACK_RATE)
                             // TODO: remove dead body from doorway
                 if timer.t <= 0.
                     timer.t = 0.
@@ -1314,20 +1273,19 @@ def updateTimers
         elif timer.isWall
             timer.t += 1. / 60. * frame_time
             if timer.t >= 1.
-                let DX = timer.dx
-                let DY = timer.dy
+                let DXY = int2(timer.dx,timer.dy)
                 let wallValue = level.plane0[index]
-                level.plane0[index] = level.plane0[(X-DX) + (Y-DY) * 64]
-                level.plane0[(X+DX) + (Y+DY) * 64] = wallValue
-                level.plane1[index] = uint16(0)
+                level.plane0[index] = level.plane0[OFS(XY-DXY)]
+                level.plane0[OFS(XY+DXY)] = wallValue
+                level.plane1[index] = 0
                 collision_plane[index] = false
-                collision_plane[(X+DX) + (Y+DY) * 64] = true
+                collision_plane[OFS(XY+DXY)] = true
                 timer.steps -= 1
-                if timer.steps>0 && !collision_plane[(X+2*DX) + (Y+2*DY) * 64]
+                if timer.steps>0 && !collision_plane[OFS(XY+DXY+DXY)]
                     // wall moves one more step
-                    level.plane1[(X+DX) + (Y+DY) * 64] = uint16(98)
+                    level.plane1[OFS(XY+DXY)] = 98
                     timer.t = 0.
-                    timer_plane[(X+DX) + (Y+DY) * 64] = timer
+                    timer_plane[OFS(XY+DXY)] = timer
                 timer.active = false
         else
             // any random timer
@@ -1335,9 +1293,6 @@ def updateTimers
             if timer.t <= 0.
                 timer.t = 0.
                 timer.active = false
-
-struct Location
-    x, y, dx, dy : float
 
 var ENABLE_CHEAT_CODEDS = true
 
@@ -1359,28 +1314,6 @@ def updatePlayer
         player.hasWeapon[int(WeaponType chainGun)] = true
         player.ammo = 199
         player.health = 200
-    if is_key_pressed(VK_F2)
-        fopen("{get_das_root()}/temp/player.json","wb") <| $ ( f )
-            if f != null
-                to_log(LOG_INFO,"player at {player.x} {player.y} {player.dx} {player.dy}\n")
-                let loc = JV([[Location x=player.x, y=player.y, dx=player.dx, dy=player.dy]])
-                let txt = write_json(loc)
-                f |> fwrite(txt)
-                to_log(LOG_INFO, "saved\n")
-    if is_key_pressed(VK_F3)
-        fopen("{get_das_root()}/temp/player.json","rb") <| $ ( f )
-            if f != null
-                let txt = fread(f)
-                var error = ""
-                var jv = read_json(txt, error)
-                if jv != null
-                    to_log(LOG_INFO, "loaded\n")
-                    var loc = from_JV(jv, type<Location>)
-                    player.x = loc.x
-                    player.y = loc.y
-                    player.dx = loc.dx
-                    player.dy = loc.dy
-                    to_log(LOG_INFO,"player at {player.x} {player.y} {player.dx} {player.dy}\n")
     if is_key_pressed(VK_F9)
         sleep(100u)
         // spawn an enemy at 34-60
@@ -1388,8 +1321,8 @@ def updatePlayer
         let Y = 61
         var category = EnemyCategory dog
         enemies |> push <| new [[Enemy
-            x = float(X) + 0.5, y = float(Y) + 0.5,
-            dox = 1., doy = 0.,
+            pos = float2(X,Y) + float2(0.5),
+            dir = float2(1,0),
             category = Category enemy,
             enemyCategory = category,
             patrolling = true,
@@ -1404,10 +1337,10 @@ def updatePlayer
         let Y = 60
         objects |> push <| new [[Entity
             category = Category prop,
-            x = float(X) + 0.5, y = float(Y) + 0.5,
+            pos = float2(X,Y) + float2(0.5),
             spriteIndex = int(Props Tree) - 21
         ]]
-        collision_plane[X + Y * 64] = true
+        collision_plane[OFS(X,Y)] = true
     if is_key_pressed(VK_F10)
         if is_key_pressed(VK_LSHIFT) || is_key_pressed(VK_RSHIFT)
             if levelIndex<8

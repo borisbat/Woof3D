@@ -76,7 +76,7 @@ def drawThings ( var bmp:Bitmap8 )
             if !visibility_plane[ofs]
                 continue
             if object_plane[ofs].category != Category nothing
-                var prc = getPlayerRelativeCoordinates(X,Y)
+                var prc = getPlayerRelativeCoordinates(object_plane[ofs].x,object_plane[ofs].y)
                 if prc.rx>player.radius && abs(prc.ry)<prc.rx + 1.
                     drawThing(prc.rx,prc.ry,prc.orx,prc.ory,object_plane[ofs],bmp)
             if enemy_plane[ofs].category != Category nothing

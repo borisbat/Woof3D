@@ -15,6 +15,8 @@ var frame_time = 0.66
 
 let CHEAT_DISABLE_ENEMIES = false
 
+let DEAD_BODY_REMOVE_DISTANCE = 10. // how far away from player dead bodies are removed
+
 let AGRO_TIME = 20. // they stay agro even if they can't see you for that many seconds
 
 let LEVEL_FADE_TIME = 1.
@@ -77,11 +79,11 @@ enum Category
 
 struct public Entity
     category : Category
-    spriteIndex : int
-    animation   : Animation?
-    orientable  : bool
-    dox, doy    : float
-    x, y        : float
+    spriteIndex  : int
+    animation    : Animation?
+    orientable   : bool
+    dox, doy     : float
+    x, y         : float
 
 var public object_plane : Entity[64*64]
 
@@ -207,6 +209,7 @@ struct public Enemy : Entity
     attackTimer : float = 0.
     agroTimer : float = 0.
     running : bool = false
+    run_x, run_y : float
 
 var public enemy_plane : Enemy[64*64]
 
@@ -267,7 +270,9 @@ def dropLoot ( X,Y : int; loot:Collectible; chanceToDrop:float ) : bool
         let m1 = int(loot)
         object_plane[ofs] = [[Entity
             category = Category prop,
-            spriteIndex = m1-21
+            spriteIndex = m1-21,
+            x = float(X) + 0.5, // TODO: add random offset?
+            y = float(Y) + 0.5
         ]]
         level.plane1[ofs] = uint16(m1)
     return true
@@ -940,7 +945,9 @@ def setupLevel ( index:int )
             elif isProp(m1)
                 object_plane[x + y * 64] = [[Entity
                     category = Category prop,
-                    spriteIndex = m1-21
+                    spriteIndex = m1-21,
+                    x = float(x) + 0.5,
+                    y = float(y) + 0.5
                 ]]
                 if isBlocking(m1)
                     collision_plane[x + y * 64] = true
@@ -952,7 +959,9 @@ def setupLevel ( index:int )
                 // dead guard
                 object_plane[x + y * 64] = [[Entity
                     category = Category prop,
-                    spriteIndex = 95
+                    spriteIndex = 95,
+                    x = float(x) + 0.5,
+                    y = float(y) + 0.5
                 ]]
             elif !CHEAT_DISABLE_ENEMIES && isEnemy(m1)   // disabled enemies for now
                 var category : EnemyCategory
@@ -1111,6 +1120,18 @@ def move ( var self:Enemy; length,sideways:float )
             enemy_plane[newcx + newcy * 64].cx = newcx
             enemy_plane[newcx + newcy * 64].cy = newcy
 
+def getPrimaryDirection(dx,dy:float) : int2
+    if abs(dx) > abs(dy)
+        return dx > 0. ? int2(1,0) : int2(-1,0)
+    else
+        return dy > 0. ? int2(0,1) : int2(0,-1)
+
+def getSecondaryDirection(dx,dy:float) : int2
+    if abs(dx) > abs(dy)
+        return dy > 0. ? int2(0,1) : int2(0,-1)
+    else
+        return dx > 0. ? int2(1,0) : int2(-1,0)
+
 def update ( var self:Enemy )
     with self
         attackTimer = max ( attackTimer - 1. / 60. * frame_time, 0. )
@@ -1125,11 +1146,6 @@ def update ( var self:Enemy )
                     let agroSound = enemyClasses[int(enemyCategory)].agroSound
                     play_game_sound_2d(agroSound, xy, AGRO_SOUND_RADIUS)
                 agroTimer = AGRO_TIME
-        if running
-            if animation == null
-                self |> startAnimation(new Animation(enemyClasses[int(enemyCategory)].runSprites,true,true))
-            rotateTowardsPlayer(self)
-            self |> move(enemyClasses[int(enemyCategory)].speed,0.)
         if animation == null || running
             if agroTimer!=0. && attackTimer==0. && player.health>0 && visibility_plane[cx + cy * 64]
                 // we try to shoot, if we are at the right distance
@@ -1140,7 +1156,6 @@ def update ( var self:Enemy )
                     return
             if agroTimer!=0. && player.health>0 && visibility_plane[cx + cy * 64]
                 // we rotate towards player
-                rotateTowardsPlayer(self)
                 let dist = length(float2(player.x,player.y) - getEnemyPosition(self))
                 let comfortDistance = enemyClasses[int(enemyCategory)].comfortDistance
                 if dist > comfortDistance
@@ -1156,6 +1171,70 @@ def update ( var self:Enemy )
                 spriteIndex = enemyClasses[int(enemyCategory)].spriteIndex
                 animation = null
                 running = false
+        if running
+            if animation == null
+                self |> startAnimation(new Animation(enemyClasses[int(enemyCategory)].runSprites,true,true))
+            if !run(self)
+                // if we can't move, we just stand and watch player
+                rotateTowardsPlayer(self)
+                spriteIndex = enemyClasses[int(enemyCategory)].spriteIndex
+                animation = null
+                running = false
+
+def run ( var self:Enemy )
+    with self
+        let speed = enemyClasses[int(enemyCategory)].speed * frame_time
+        var tgt_x, tgt_y : float
+        if run_x==0.
+            tgt_x = player.x
+            tgt_y = player.y
+        else
+            tgt_x = run_x
+            tgt_y = run_y
+        var runDir = float2(tgt_x,tgt_y)-float2(x,y)
+        let dist = length(runDir)
+        runDir /= dist
+        if run_x!=0.
+            if dist<=speed
+                // we reached the side target
+                x = run_x
+                y = run_y
+                run_x = 0.
+                run_y = 0.
+                return true
+            else
+                // running to side target (todo: check if it became taken)
+                dox = runDir.x
+                doy = runDir.y
+                self |> move(speed, 0.)
+                return true
+        var mainPos = float2(x,y) + runDir * 0.5
+        if self |> canMoveTo( mainPos.x, mainPos.y )
+            dox = runDir.x
+            doy = runDir.y
+            self |> move(speed, 0.)
+            return true
+        // we pick side target
+        var primDir = getPrimaryDirection(runDir.x,runDir.y)
+        var primPos = float2(cx,cy) + float2(0.5) + float2(primDir.x,primDir.y)
+        if self |> canMoveTo( primPos.x, primPos.y )
+            run_x = primPos.x
+            run_y = primPos.y
+            return true
+        var secDir = getSecondaryDirection(runDir.x,runDir.y)
+        var secPos = float2(cx,cy) + float2(0.5) + float2(secDir.x,secDir.y)
+        if self |> canMoveTo( secPos.x, secPos.y )
+            run_x = secPos.x
+            run_y = secPos.y
+            return true
+        return false
+
+def updateProps
+    // kill invisible dead bodies of enemies
+    for prop,vis in object_plane,visibility_plane
+        if !vis && prop.category == Category prop && isEnemy(prop.spriteIndex)
+            if length(float2(player.x,player.y) - float2(prop.x,prop.y)) > DEAD_BODY_REMOVE_DISTANCE   // only if far away
+                prop.category = Category nothing
 
 def updateEnemies
     for enemy in enemy_plane
@@ -1164,6 +1243,26 @@ def updateEnemies
         // very basic AI
         if enemy.category == Category enemy
             enemy |> update()
+        // demote dead body to prop, or delete if not visible and far enough away
+        if enemy.category == Category deadBody
+            if enemy.animation == null
+                let ofs = enemy.cx + enemy.cy * 64
+                if !visibility_plane[ofs]
+                    // we are not visible, so we can be deleted
+                    if length(float2(player.x,player.y) - float2(enemy.x,enemy.y)) > DEAD_BODY_REMOVE_DISTANCE
+                        // only if far away
+                        enemy.category = Category nothing
+                        continue
+                if object_plane[ofs].category == Category nothing
+                    // we can demote to prop
+                    object_plane[ofs] = [[Entity
+                        category = Category prop,
+                        spriteIndex = enemy.spriteIndex,
+                        x = enemy.x,
+                        y = enemy.y
+                    ]]
+                    enemy.category = Category nothing
+                    continue
         // animation
         if enemy.animation != null
             enemy.animation.timer += enemy.animation.rate * frame_time
@@ -1205,13 +1304,13 @@ def updateTimers
                 else
                     timer.t -= 1./ 60. * frame_time
                 if timer.t <= 1.
-                    if !collision_plane[index]
+                    if !collision_plane[index] && enemy_plane[index].category == Category nothing
                         if player |> isTooCloseToDoor(X, Y)
                             timer.t = DOOR_STAYS_CLOSED
-                            // print("TOO CLOSE TO DOOR {player.x} {player.y} \n")
                         else
                             play_game_sound_2d(SoundName CLOSEDOORSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS, DOOR_SOUND_PLAYBACK_RATE)
                             collision_plane[index] = true
+                            object_plane[index].category = Category nothing // remove dead body from doorway
                 if timer.t <= 0.
                     timer.t = 0.
                     timer.active = false
@@ -1289,8 +1388,8 @@ def updatePlayer
         sleep(100u)
         // spawn an enemy at 34-60
         let X = 34
-        let Y = 60
-        var category = EnemyCategory guard
+        let Y = 61
+        var category = EnemyCategory dog
         if enemy_plane[X + Y * 64].category == Category nothing
             enemy_plane[X + Y * 64] = [[Enemy
                 cx = X, cy = Y,
@@ -1303,6 +1402,16 @@ def updatePlayer
                 health = enemyClasses[int(category)].hp,
                 orientable = true
             ]]
+    if is_key_pressed(VK_F8)
+        // spawn column
+        let X = 34
+        let Y = 60
+        object_plane[X + Y * 64] = [[Entity
+            category = Category prop,
+            x = float(X) + 0.5, y = float(Y) + 0.5,
+            spriteIndex = int(Props Tree) - 19
+        ]]
+        collision_plane[X + Y * 64] = true
     if is_key_pressed(VK_F10)
         switchLevel(levelIndex+1)
 
@@ -1320,5 +1429,6 @@ def public updateGame(dt:float)
     updateHud()
     updatePlayer()
     updateTimers()
+    updateProps()
     updateEnemies()
 

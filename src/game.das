@@ -305,7 +305,6 @@ def getPlayerRelativeCoordinates ( xy:float2 )
         opos=o
     ]]
 
-[jit,hint(unsafe_range_check)]
 def trace ( px,py,pdx,pdy,maxDist:float; writeVis:bool ) : tuple<t:float; tx:float; textureIndex:int>
     // direction of the ray
     var dx = pdx

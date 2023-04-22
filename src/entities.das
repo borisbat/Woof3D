@@ -2,8 +2,8 @@ module entities
 
 enum Collectible
     DogFood = 29
-    KeySilver = 43
-    KeyGold = 44
+    KeyGold = 43
+    KeySilver = 44
     Food = 47
     Medkit = 48
     AmmoClip = 49

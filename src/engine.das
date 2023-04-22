@@ -77,11 +77,11 @@ def drawThings ( var bmp:Bitmap8 )
                 continue
             if object_plane[ofs].category != Category nothing
                 var prc = getPlayerRelativeCoordinates(object_plane[ofs].x,object_plane[ofs].y)
-                if prc.rx>player.radius && abs(prc.ry)<prc.rx + 1.
+                if prc.rx>0.05 && abs(prc.ry)<prc.rx + 1.
                     drawThing(prc.rx,prc.ry,prc.orx,prc.ory,object_plane[ofs],bmp)
             if enemy_plane[ofs].category != Category nothing
                 var prc = getPlayerRelativeCoordinates(enemy_plane[ofs].x,enemy_plane[ofs].y)
-                if prc.rx>player.radius && abs(prc.ry)<prc.rx + 1.
+                if prc.rx>0.05 && abs(prc.ry)<prc.rx + 1.
                     drawThing(prc.rx,prc.ry,prc.orx,prc.ory,enemy_plane[ofs],bmp)
 
 def getEntityAngle( Direction : float2 ) : int

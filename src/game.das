@@ -17,6 +17,8 @@ let CHEAT_DISABLE_ENEMIES = false
 
 let DEAD_BODY_REMOVE_DISTANCE = 10. // how far away from player dead bodies are removed
 
+let SHOT_ALERT_RADIUS = 10. // how far away from player enemies are alerted by shots
+
 let AGRO_TIME = 20. // they stay agro even if they can't see you for that many seconds
 
 let LEVEL_FADE_TIME = 1.
@@ -703,6 +705,16 @@ def update ( var self:Player )
         if is_key_pressed(VK_LCONTROL) || is_key_pressed(VK_RCONTROL)
             player |> shoot()
 
+def alert ( x,y,radius:float )
+    let xymin = max( floori(float2(x,y) - float2(radius)), int2(0))
+    let xymax = min( floori(float2(x,y) + float2(radius)), int2(63))
+    for Y in range(xymin.y,xymax.y)
+        for X in range(xymin.x,xymax.x)
+            let ofs = X + Y*64
+            // todo: check vis?
+            if enemy_plane[ofs].category == Category enemy
+                enemy_plane[ofs].agroTimer = AGRO_TIME
+
 def shoot ( var self:Player )
     with self
         if weaponAnimation == null
@@ -713,6 +725,7 @@ def shoot ( var self:Player )
             else
                 ammo --
                 play_game_sound(weaponSounds[int(weaponType)])
+                alert(x,y,SHOT_ALERT_RADIUS)
             weaponAnimation = new Animation([{for frame in range(4); frame+416+int(weaponType)*5}])
             var d = zIndex[int(pixelWidth) / 2]
             if weaponType == WeaponType knife
@@ -1409,7 +1422,7 @@ def updatePlayer
         object_plane[X + Y * 64] = [[Entity
             category = Category prop,
             x = float(X) + 0.5, y = float(Y) + 0.5,
-            spriteIndex = int(Props Tree) - 19
+            spriteIndex = int(Collectible KeySilver) - 21
         ]]
         collision_plane[X + Y * 64] = true
     if is_key_pressed(VK_F10)

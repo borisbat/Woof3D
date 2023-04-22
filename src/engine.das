@@ -49,6 +49,15 @@ def drawWallPixels ( i:int; t,tx:float; tex:WallTexture; var bmp:Bitmap8 )
             uvY += dUVY
         // memset8(PSP+count,25u8,bmp.size.y - ymax - 1)
 
+def isVisible(x,y:float)
+    let f = floori(float2(x,y)-float2(0.45))
+    let t = floori(float2(x,y)+float2(0.45))
+    for Y in range(f.y,t.y+1)
+        for X in range(f.x,t.x+1)
+            if visibility_plane[Y*64+X]
+                return true
+    return false
+
 // [jit,hint(unsafe_range_check,noalias=bmp)]
 def drawThings ( var bmp:Bitmap8 )
     let dir = float2(player.dx,player.dy)
@@ -73,16 +82,16 @@ def drawThings ( var bmp:Bitmap8 )
             var X = MX * M11 + MY * M21 + StartX
             var Y = MX * M12 + MY * M22 + StartY
             let ofs = Y * 64 + X
-            if !visibility_plane[ofs]
-                continue
             if object_plane[ofs].category != Category nothing
                 var prc = getPlayerRelativeCoordinates(object_plane[ofs].x,object_plane[ofs].y)
                 if prc.rx>0.05 && abs(prc.ry)<prc.rx + 1.
-                    drawThing(prc.rx,prc.ry,prc.orx,prc.ory,object_plane[ofs],bmp)
+                    if isVisible(object_plane[ofs].x,object_plane[ofs].y)
+                        drawThing(prc.rx,prc.ry,prc.orx,prc.ory,object_plane[ofs],bmp)
             if enemy_plane[ofs].category != Category nothing
                 var prc = getPlayerRelativeCoordinates(enemy_plane[ofs].x,enemy_plane[ofs].y)
                 if prc.rx>0.05 && abs(prc.ry)<prc.rx + 1.
-                    drawThing(prc.rx,prc.ry,prc.orx,prc.ory,enemy_plane[ofs],bmp)
+                    if isVisible(enemy_plane[ofs].x,enemy_plane[ofs].y)
+                        drawThing(prc.rx,prc.ry,prc.orx,prc.ory,enemy_plane[ofs],bmp)
 
 def getEntityAngle( Direction : float2 ) : int
     var EntityAngle = floori((8.0f * atan2(Direction.y, Direction.x) / (2.0f * PI)) + 0.5f)

@@ -1317,16 +1317,17 @@ def updateTimers
                 else
                     timer.t -= 1./ 60. * frame_time
                 if timer.t <= 1.
-                    if !collision_plane[index] && enemy_plane[index].category == Category nothing
-                        if player |> isTooCloseToDoor(X, Y)
+                    if !collision_plane[index]
+                        if enemy_plane[index].category!=Category nothing || player|>isTooCloseToDoor(X, Y)
                             timer.t = DOOR_STAYS_CLOSED
                         else
-                            play_game_sound_2d(SoundName CLOSEDOORSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS, DOOR_SOUND_PLAYBACK_RATE)
                             collision_plane[index] = true
+                            play_game_sound_2d(SoundName CLOSEDOORSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS, DOOR_SOUND_PLAYBACK_RATE)
                             object_plane[index].category = Category nothing // remove dead body from doorway
                 if timer.t <= 0.
                     timer.t = 0.
                     timer.active = false
+                    assert(collision_plane[index])
         elif timer.isWall
             timer.t += 1. / 60. * frame_time
             if timer.t >= 1.
@@ -1422,7 +1423,7 @@ def updatePlayer
         object_plane[X + Y * 64] = [[Entity
             category = Category prop,
             x = float(X) + 0.5, y = float(Y) + 0.5,
-            spriteIndex = int(Collectible KeySilver) - 21
+            spriteIndex = int(Props Tree) - 21
         ]]
         collision_plane[X + Y * 64] = true
     if is_key_pressed(VK_F10)

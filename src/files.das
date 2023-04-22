@@ -185,11 +185,16 @@ struct WallTexture
 
 var WallPics : array<WallTexture>
 
+struct SpriteSpan
+    endRow   : int
+    startRow : int
+
 struct SpriteTexture
     data : array<uint8>
     firstCol, lastCol : int
     colOffset : int[64]
     pixelOffset : int[64]
+    spans : array<SpriteSpan>
 
 var Sprites : array<SpriteTexture>
 
@@ -200,13 +205,15 @@ def prepareSprite ( var sprite : SpriteTexture )
     var pixelOffset = 4 + 2 * nbCol
     for col in range(sprite.firstCol, sprite.lastCol + 1)
         var colOffset = int(sprite.data |> getUInt16(4 + 2 * (col - sprite.firstCol)))
-        sprite.colOffset[col] = colOffset
         sprite.pixelOffset[col] = pixelOffset
+        sprite.colOffset[col] = sprite.spans |> length
         while true
             let endRow = int(sprite.data |> getUInt16(colOffset)) / 2
             if endRow == 0
+                sprite.spans |> push([[SpriteSpan startRow=0, endRow=0]])
                 break
             let startRow = int(sprite.data |> getUInt16(colOffset + 4)) / 2
+            sprite.spans |> push([[SpriteSpan startRow=startRow, endRow=endRow]])
             colOffset += 6
             for row in range(startRow, endRow)
                 pixelOffset ++

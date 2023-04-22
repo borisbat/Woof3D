@@ -105,21 +105,20 @@ def drawSprite ( x,y: int; h:float; dist:float; sprite:SpriteTexture; var bmp:Bi
                 let col = int(uvX)
                 if col >= sprite.firstCol && col <= sprite.lastCol
                     var pixelOffset = sprite.pixelOffset[col]
-                    unsafe
-                        var colOffsetData = reinterpret<uint16?> addr(sprite.data[sprite.colOffset[col]])
-                        while true
-                            let endRow = int(*colOffsetData) / 2
-                            if endRow == 0
-                                break
-                            let startRow = int(colOffsetData[2]) / 2
-                            colOffsetData += 3
-                            let ystart = y + floori(float(startRow) * h / 64.)
-                            let ymin = max(ystart, 0)
-                            let ymax = min(y + floori(float(endRow) * h / 64.), bmp.size.y-1)
-                            if ymin < ymax
-                                var uv0 = float(ymin - ystart) * dUVX
-                                rast_hspan(bmp.data,X*bmp.size.y+ymin,tspan,pixelOffset,uv0,dUVX,ymax-ymin)
-                            pixelOffset += endRow - startRow
+                    var colOffset = sprite.colOffset[col]
+                    while true
+                        let endRow = sprite.spans[colOffset].endRow
+                        if endRow == 0
+                            break
+                        let startRow = sprite.spans[colOffset].startRow
+                        colOffset ++
+                        let ystart = y + floori(float(startRow) * h / 64.)
+                        let ymin = max(ystart, 0)
+                        let ymax = min(y + floori(float(endRow) * h / 64.), bmp.size.y-1)
+                        if ymin < ymax
+                            var uv0 = float(ymin - ystart) * dUVX
+                            rast_hspan(bmp.data,X*bmp.size.y+ymin,tspan,pixelOffset,uv0,dUVX,ymax-ymin)
+                        pixelOffset += endRow - startRow
             uvX += dUVX
 
 def draw2DElement ( x,y,w,h:int; var pic:Picture; var bmp:Bitmap8# )

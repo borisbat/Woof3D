@@ -363,14 +363,14 @@ def get_audio_data ( name:AudioName )
         data |> push(float(i)/128.0-1.0)
     return <- data
 
-def public play_game_sound_2d ( name:SoundName; xy:float2; r:float; rate:int=SOUND_SAMPLE_RATE )
+def play_game_sound_2d ( name:SoundName; xy:float2; r:float; rate:int=SOUND_SAMPLE_RATE )
     play_app_sound_2d(xy, r, get_sound_data(name), rate)
 
-def public play_game_sound ( name:SoundName; rate:int=SOUND_SAMPLE_RATE )
+def play_game_sound ( name:SoundName; rate:int=SOUND_SAMPLE_RATE )
     play_app_sound(get_sound_data(name), rate)
 
-def public play_game_audio_2d ( name:AudioName; xy:float2; r:float; rate:int=SOUND_SAMPLE_RATE )
+def play_game_audio_2d ( name:AudioName; xy:float2; r:float; rate:int=SOUND_SAMPLE_RATE )
     play_app_sound_2d(xy, r, get_audio_data(name), rate)
 
-def public play_game_audio ( name:AudioName; rate:int=SOUND_SAMPLE_RATE )
+def play_game_audio ( name:AudioName; rate:int=SOUND_SAMPLE_RATE )
     play_app_sound(get_audio_data(name), rate)

@@ -1,4 +1,4 @@
-module app private
+module app
 
 require rast2d public
 
@@ -54,7 +54,7 @@ var bb_width = 0
 var bb_height = 0
 var bb_data : array<uint8>
 
-def public get_screen_size
+def get_screen_size
     return int2(bb_width,bb_height)
 
 def update_bb ( var w, h : int )
@@ -87,53 +87,53 @@ def create_gl_objects(w,h : int)
 
 var window : GLFWwindow?
 
-let public VK_LSHIFT = GLFW_KEY_LEFT_SHIFT
-let public VK_RSHIFT = GLFW_KEY_RIGHT_SHIFT
-let public VK_LALT = GLFW_KEY_LEFT_ALT
-let public VK_RALT = GLFW_KEY_RIGHT_ALT
-let public VK_LCONTROL = GLFW_KEY_LEFT_CONTROL
-let public VK_RCONTROL = GLFW_KEY_RIGHT_CONTROL
-let public VK_LEFT = GLFW_KEY_LEFT
-let public VK_RIGHT = GLFW_KEY_RIGHT
-let public VK_UP = GLFW_KEY_UP
-let public VK_DOWN = GLFW_KEY_DOWN
-let public VK_1 = GLFW_KEY_1
-let public VK_2 = GLFW_KEY_2
-let public VK_3 = GLFW_KEY_3
-let public VK_4 = GLFW_KEY_4
-let public VK_5 = GLFW_KEY_5
-let public VK_6 = GLFW_KEY_6
-let public VK_7 = GLFW_KEY_7
-let public VK_8 = GLFW_KEY_8
-let public VK_9 = GLFW_KEY_9
-let public VK_0 = GLFW_KEY_0
-let public VK_SPACE = GLFW_KEY_SPACE
-let public VK_ESCAPE = GLFW_KEY_ESCAPE
-let public VK_ENTER = GLFW_KEY_ENTER
-let public VK_A = GLFW_KEY_A
-let public VK_D = GLFW_KEY_D
-let public VK_F1 = GLFW_KEY_F1
-let public VK_F2 = GLFW_KEY_F2
-let public VK_F3 = GLFW_KEY_F3
-let public VK_F4 = GLFW_KEY_F4
-let public VK_F5 = GLFW_KEY_F5
-let public VK_F6 = GLFW_KEY_F6
-let public VK_F7 = GLFW_KEY_F7
-let public VK_F8 = GLFW_KEY_F8
-let public VK_F9 = GLFW_KEY_F9
-let public VK_F10 = GLFW_KEY_F10
-let public VK_F11 = GLFW_KEY_F11
-let public VK_F12 = GLFW_KEY_F12
+let VK_LSHIFT = GLFW_KEY_LEFT_SHIFT
+let VK_RSHIFT = GLFW_KEY_RIGHT_SHIFT
+let VK_LALT = GLFW_KEY_LEFT_ALT
+let VK_RALT = GLFW_KEY_RIGHT_ALT
+let VK_LCONTROL = GLFW_KEY_LEFT_CONTROL
+let VK_RCONTROL = GLFW_KEY_RIGHT_CONTROL
+let VK_LEFT = GLFW_KEY_LEFT
+let VK_RIGHT = GLFW_KEY_RIGHT
+let VK_UP = GLFW_KEY_UP
+let VK_DOWN = GLFW_KEY_DOWN
+let VK_1 = GLFW_KEY_1
+let VK_2 = GLFW_KEY_2
+let VK_3 = GLFW_KEY_3
+let VK_4 = GLFW_KEY_4
+let VK_5 = GLFW_KEY_5
+let VK_6 = GLFW_KEY_6
+let VK_7 = GLFW_KEY_7
+let VK_8 = GLFW_KEY_8
+let VK_9 = GLFW_KEY_9
+let VK_0 = GLFW_KEY_0
+let VK_SPACE = GLFW_KEY_SPACE
+let VK_ESCAPE = GLFW_KEY_ESCAPE
+let VK_ENTER = GLFW_KEY_ENTER
+let VK_A = GLFW_KEY_A
+let VK_D = GLFW_KEY_D
+let VK_F1 = GLFW_KEY_F1
+let VK_F2 = GLFW_KEY_F2
+let VK_F3 = GLFW_KEY_F3
+let VK_F4 = GLFW_KEY_F4
+let VK_F5 = GLFW_KEY_F5
+let VK_F6 = GLFW_KEY_F6
+let VK_F7 = GLFW_KEY_F7
+let VK_F8 = GLFW_KEY_F8
+let VK_F9 = GLFW_KEY_F9
+let VK_F10 = GLFW_KEY_F10
+let VK_F11 = GLFW_KEY_F11
+let VK_F12 = GLFW_KEY_F12
 
-def public is_key_pressed ( key:int )
+def is_key_pressed ( key:int )
     return glfwGetKey(window, key)!=0
 
 var dt_sec = 0.0lf
 
-def public get_delta_time_sec
+def get_delta_time_sec
     return float(dt_sec)
 
-def public set_palette ( pal : uint[256 ])
+def set_palette ( pal : uint[256 ])
     for d,s in f_palette, pal
         d = unpack_byte_to_float(s) / float4(255.)
 
@@ -163,11 +163,11 @@ def allocate_app_sound
             return i
     return -1
 
-def public set_app_sound_position ( xy:float2; dxy:float2 )
+def set_app_sound_position ( xy:float2; dxy:float2 )
     sound_head_position = xy
     sound_head_direction = dxy
 
-def public play_app_sound ( wave:array<float>; freq:int )
+def play_app_sound ( wave:array<float>; freq:int )
     let i = allocate_app_sound()
     if i<0
         return
@@ -176,7 +176,7 @@ def public play_app_sound ( wave:array<float>; freq:int )
     playing_sounds[i].busy = true
     playing_sounds[i].is3d = false
 
-def public play_app_sound_2d ( pos:float2; radius:float; wave:array<float>; freq:int )
+def play_app_sound_2d ( pos:float2; radius:float; wave:array<float>; freq:int )
     let i = allocate_app_sound()
     if i<0
         return
@@ -206,7 +206,7 @@ def update_sounds
             let nrxy = normalize(rxy)
             set_sound_pan(snd.handle, -nrxy.y )
 
-def public raster_app_main ( blk: block<(dt:float; var back_buffer:Bitmap8):void> )
+def raster_app_main ( blk: block<(dt:float; var back_buffer:Bitmap8):void> )
     if glfwInit()==0
 		panic("can't init glfw")
     defer <|

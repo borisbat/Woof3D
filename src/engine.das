@@ -1,4 +1,4 @@
-module engine private
+module engine
 
 require files
 require game
@@ -66,38 +66,31 @@ def isVisible(x,y:float)
 
 // [jit,hint(unsafe_range_check,noalias=bmp)]
 def drawThings ( var bmp:Bitmap8 )
-    let dir = float2(player.dx,player.dy)
-    var M11 = 0
-    var M21 = 0
-    var M12 = 0
-    var M22 = 0
-    var StartX = 0
-    var StartY = 0
-    if abs(dir.x) >= abs(dir.y)
-        M21 = dir.x > 0. ? -1 : 1
-        M12 = dir.y > 0. ? -1 : 1
-    else
-        M11 = dir.x > 0. ? -1 : 1
-        M22 = dir.y > 0. ? -1 : 1
-    if M11 < 0 || M21 < 0
-        StartX = 63
-    if M12 < 0 || M22 < 0
-        StartY = 63
-    for MY in range(0, 64)
-        for MX in range(0, 64)
-            var X = MX * M11 + MY * M21 + StartX
-            var Y = MX * M12 + MY * M22 + StartY
-            let ofs = Y * 64 + X
-            if object_plane[ofs].category != Category nothing
-                var prc = getPlayerRelativeCoordinates(object_plane[ofs].x,object_plane[ofs].y)
-                if prc.rx>0.05 && abs(prc.ry)<prc.rx + 1.
-                    if isVisible(object_plane[ofs].x,object_plane[ofs].y)
-                        drawThing(prc.rx,prc.ry,prc.orx,prc.ory,object_plane[ofs],bmp)
-            if enemy_plane[ofs].category != Category nothing
-                var prc = getPlayerRelativeCoordinates(enemy_plane[ofs].x,enemy_plane[ofs].y)
-                if prc.rx>0.05 && abs(prc.ry)<prc.rx + 1.
-                    if isVisible(enemy_plane[ofs].x,enemy_plane[ofs].y)
-                        drawThing(prc.rx,prc.ry,prc.orx,prc.ory,enemy_plane[ofs],bmp)
+    var things : array<Entity?>
+    things |> reserve ( enemies|>length + objects|>length )
+    for enemy in enemies
+        var prc = getPlayerRelativeCoordinates(enemy.x,enemy.y)
+        if prc.rx>0.05 && abs(prc.ry)<prc.rx + 1.
+            if visibility_plane[floori(enemy.y)*64+floori(enemy.x)]
+                enemy.prc = prc
+                things |> push ( enemy )
+    for object in objects
+        var prc = getPlayerRelativeCoordinates(object.x,object.y)
+        if prc.rx>0.05 && abs(prc.ry)<prc.rx + 1.
+            if visibility_plane[floori(object.y)*64+floori(object.x)]
+                object.prc = prc
+                things |> push ( object )
+    things |> sort <| $ ( a,b : Entity? )
+        if a.category != b.category
+            let aix = floori(a.x)
+            let aiy = floori(a.y)
+            let bix = floori(b.x)
+            let biy = floori(b.y)
+            if aix==bix && aiy==biy
+                return int(a.category) < int(b.category)
+        return a.prc.rx > b.prc.rx
+    for thing in things
+        drawThing(thing.prc.rx,thing.prc.ry,thing.prc.orx,thing.prc.ory,*thing,bmp)
 
 def getEntityAngle( Direction : float2 ) : int
     var EntityAngle = floori((8.0f * atan2(Direction.y, Direction.x) / (2.0f * PI)) + 0.5f)
@@ -304,7 +297,7 @@ def drawVisibility(var bmp:Bitmap8)
         for y in range(64)
             var col = visibility_plane[x+y*64] ? 0u8 : 255u8
             drawDebugRect(bmp.size.y - 64*4 - 10 + x*4,10 + y*4,4,4,col,bmp)
-    for e in enemy_plane
+    for e in enemies
         if e.category == Category enemy
             var x = floori(e.x)
             var y = floori(e.y)
@@ -315,13 +308,13 @@ def drawCollision(var bmp:Bitmap8)
         for y in range(64)
             var col = collision_plane[x+y*64] ? 0u8 : 255u8
             drawDebugRect(bmp.size.y - 64*4 - 10 + x*4,10 + y*4,4,4,col,bmp)
-    for e in enemy_plane
+    for e in enemies
         if e.category == Category enemy
             var x = floori(e.x)
             var y = floori(e.y)
             drawDebugRect(bmp.size.y - 64*4 - 10 + floori(e.x)*4,10 + floori(e.y)*4,4,4,32u8,bmp)
 
-def public draw ( level:Level; var bmp:Bitmap8 )
+def draw ( level:Level; var bmp:Bitmap8 )
     hudFactor = max(float(bmp.size.y)/200.,1.)
     pixelWidth = float(bmp.size.x)
     pixelHeight = float(bmp.size.y)

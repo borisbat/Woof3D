@@ -1,20 +1,20 @@
-module files private
+module files
 
 require daslib/array_boost
 
 require fio
 require strings
 
-let public WL6_FILES_ROOT = "../data"
+let WL6_FILES_ROOT = "../data"
 
-let public SOUND_SAMPLE_RATE = 7000
+let SOUND_SAMPLE_RATE = 7000
 
-let public TOTAL_LEVELS = 60
+let TOTAL_LEVELS = 60
 
 var rlewTag : uint16
 var mapHead : uint[TOTAL_LEVELS]
 
-let public GamePalette = [[uint
+let GamePalette = [[uint
     0xff000000; 0xffa80000; 0xff00a800; 0xffa8a800; 0xff0000a8; 0xffa800a8; 0xff0054a8; 0xffa8a8a8;
     0xff545454; 0xfffc5454; 0xff54fc54; 0xfffcfc54; 0xff5454fc; 0xfffc54fc; 0xff54fcfc; 0xfffcfcfc;
     0xffececec; 0xffdcdcdc; 0xffd0d0d0; 0xffc0c0c0; 0xffb4b4b4; 0xffa8a8a8; 0xff989898; 0xff8c8c8c;
@@ -57,28 +57,28 @@ def LoadBytes ( filename : string )
         panic("failed to load file: {filename}")
     return <- bytes
 
-def public getUInt8 ( bytes : array<uint8>; offset : int ) : uint8
+def getUInt8 ( bytes : array<uint8>; offset : int ) : uint8
     return bytes[offset]
 
-def public getUInt8 ( bytes : array<uint8>#; offset : int ) : uint8
+def getUInt8 ( bytes : array<uint8>#; offset : int ) : uint8
     return bytes[offset]
 
-def public getUInt16 ( bytes : array<uint8>; offset : int ) : uint16
+def getUInt16 ( bytes : array<uint8>; offset : int ) : uint16
     return uint16(uint(bytes[offset]) + (uint(bytes[offset+1]) << 8u))
 
-def public getUInt16 ( bytes : array<uint8>#; offset : int ) : uint16
+def getUInt16 ( bytes : array<uint8>#; offset : int ) : uint16
     return uint16(uint(bytes[offset]) + (uint(bytes[offset+1]) << 8u))
 
-def public getUInt32 ( bytes : array<uint8>; offset : int ) : uint
+def getUInt32 ( bytes : array<uint8>; offset : int ) : uint
     return uint(bytes[offset]) + (uint(bytes[offset+1]) << 8u) + (uint(bytes[offset+2]) << 16u) + (uint(bytes[offset+3]) << 24u)
 
-def public getUInt32 ( bytes : array<uint8>#; offset : int ) : uint
+def getUInt32 ( bytes : array<uint8>#; offset : int ) : uint
     return uint(bytes[offset]) + (uint(bytes[offset+1]) << 8u) + (uint(bytes[offset+2]) << 16u) + (uint(bytes[offset+3]) << 24u)
 
-def public setUInt8 ( var bytes : array<uint8>; offset : int; value : uint8 )
+def setUInt8 ( var bytes : array<uint8>; offset : int; value : uint8 )
     bytes[offset] = value
 
-def public setUInt16 ( var bytes : array<uint8>; offset : int; value : uint16 )
+def setUInt16 ( var bytes : array<uint8>; offset : int; value : uint16 )
     bytes[offset] = uint8(uint(value) & 0xFFu)
     bytes[offset+1] = uint8((uint(value) >> 8u) & 0xFFu)
 
@@ -151,11 +151,11 @@ def InitMapHead()
         mapHead[i] = bytes |> getUInt32(2 + i*4)
     to_log(LOG_INFO,"Loaded MAPHEAD.WL6\n")
 
-struct public Level
+struct Level
     plane0 : array<uint16>
     plane1 : array<uint16>
 
-var public Levels : Level[TOTAL_LEVELS]
+var Levels : Level[TOTAL_LEVELS]
 
 def InitGameMap()
     var bytes <- LoadBytes("GAMEMAPS.WL6")
@@ -176,18 +176,18 @@ def InitGameMap()
             assert(Levels[level].plane1 |> length == 64*64, "invalid plane1 size")
     to_log(LOG_INFO,"Loaded GAMEMAPS.WL6\n")
 
-struct public WallTexture
+struct WallTexture
     data : uint8[64*64]
 
-var public WallPics : array<WallTexture>
+var WallPics : array<WallTexture>
 
-struct public SpriteTexture
+struct SpriteTexture
     data : array<uint8>
     firstCol, lastCol : int
     colOffset : int[64]
     pixelOffset : int[64]
 
-var public Sprites : array<SpriteTexture>
+var Sprites : array<SpriteTexture>
 
 def prepareSprite ( var sprite : SpriteTexture )
     sprite.firstCol = int(sprite.data |> getUInt16(0))
@@ -207,12 +207,12 @@ def prepareSprite ( var sprite : SpriteTexture )
             for row in range(startRow, endRow)
                 pixelOffset ++
 
-struct public Sound
+struct Sound
     data : array<uint8>
 
-var public Sounds : array<Sound>
+var Sounds : array<Sound>
 
-var public Audio : array<Sound>
+var Audio : array<Sound>
 
 def InitResources()
     var bytes <- LoadBytes("VSWAP.WL6")
@@ -280,7 +280,7 @@ def convertPcSoundToWave ( src:array<uint8>#; hertz:int )
                 dst[dstOut++] = 128u8
     return <- dst
 
-def public InitAudio()
+def InitAudio()
     var audioHeader <- LoadBytes("AUDIOHED.WL6")
     var audioData <- LoadBytes("AUDIOT.WL6")
     to_log(LOG_INFO,"total {NUMSOUNDS} sounds\n")
@@ -354,12 +354,12 @@ let PIC_COUNT = 140
 let PIC_STARTS = 3
 let PIC_ENDS = 134
 
-struct public Picture
+struct Picture
     width, height : int
     texels : array<uint8>
     data : array<uint8>
 
-var public Pictures : array<Picture>
+var Pictures : array<Picture>
 
 def ExtractPic ( bytes:array<uint8>; magic_number:int )
     var next_index = magic_number + 1
@@ -420,7 +420,7 @@ def InitPics
     to_log(LOG_INFO,"total {PIC_COUNT} pictures\n")
     to_log(LOG_INFO,"Loaded VGAGRAPH.WL6")
 
-def public InitFiles
+def InitFiles
     InitMapHead()
     InitGameMap()
     InitResources()

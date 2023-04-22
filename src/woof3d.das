@@ -1,7 +1,5 @@
 module woof3d
 
-require app
-
 require math
 require fio
 require strings
@@ -17,6 +15,36 @@ require rast2d
 let WL6_FILES_ROOT = "../data"
 
 var ENABLE_CHEAT_CODEDS = true
+
+// -------------------- application --------------------
+
+class Application
+    // controls
+    shootButton : bool
+    activateButton : bool
+    weapon1Button : bool
+    weapon2Button : bool
+    weapon3Button : bool
+    weapon4Button : bool
+    leftButton : bool
+    rightButton : bool
+    forwardButton : bool
+    backwardButton : bool
+    strafeLeftButton : bool
+    strafeRightButton : bool
+    // cheat codes
+    cheatGiveEverything : bool
+    cheat1 : bool                   // spawn enemy?
+    cheat2 : bool                   // spawn obstacle?
+    cheatSwitchLevel : bool         // any switch to next level
+    cheatSwitchLevelShift : bool    // switch to specific level (shift pressed?)
+
+    def abstract play_app_sound ( wave:array<float>; freq:int ) : void
+    def abstract play_app_sound_2d ( pos:float2; radius:float; wave:array<float>; freq:int ) : void
+    def abstract set_palette ( pal : uint[256] ) : void
+    def abstract set_app_sound_position ( xy:float2; dxy:float2 ) : void
+
+var application : Application?
 
 // -------------------- resource files --------------------
 
@@ -590,16 +618,16 @@ def get_audio_data ( name:AudioName )
     return <- data
 
 def play_game_sound_2d ( name:SoundName; xy:float2; r:float; rate:int=SOUND_SAMPLE_RATE )
-    play_app_sound_2d(xy, r, get_sound_data(name), rate)
+    application->play_app_sound_2d(xy, r, get_sound_data(name), rate)
 
 def play_game_sound ( name:SoundName; rate:int=SOUND_SAMPLE_RATE )
-    play_app_sound(get_sound_data(name), rate)
+    application->play_app_sound(get_sound_data(name), rate)
 
 def play_game_audio_2d ( name:AudioName; xy:float2; r:float; rate:int=SOUND_SAMPLE_RATE )
-    play_app_sound_2d(xy, r, get_audio_data(name), rate)
+    application->play_app_sound_2d(xy, r, get_audio_data(name), rate)
 
 def play_game_audio ( name:AudioName; rate:int=SOUND_SAMPLE_RATE )
-    play_app_sound(get_audio_data(name), rate)
+    application->play_app_sound(get_audio_data(name), rate)
 
 // -------------------- entities --------------------
 
@@ -1365,7 +1393,6 @@ def move ( var self:Player; length,sideways:float )
 def collect ( var self:Player; XY:int2 )
     with self
     // WE TRIGGER LEVEL SWITCHES HERE AFTER BOSSES
-        // print("{levelIndex} {X} {Y}\n")
         if levelIndex==8 && XY.y<8
             // hans grosse level, we see the 'run away' wall around line 7
             switchLevel(levelIndex+1)
@@ -1437,22 +1464,22 @@ def turn ( var self:Player; alpha:float )
 def update ( var self:Player )
     with self
         if health <= 0
-            if is_key_pressed(VK_SPACE) || is_key_pressed(VK_ENTER)
+            if application.activateButton
                 switchLevel(levelIndex, true)
             return
         var changed = false
         if weaponAnimation == null
-            if is_key_pressed(VK_1)
+            if application.weapon1Button
                 self |> switchWeapon(WeaponType knife)
-            elif is_key_pressed(VK_2)
+            elif application.weapon2Button
                 self |> switchWeapon(WeaponType pistol)
-            elif is_key_pressed(VK_3)
+            elif application.weapon3Button
                 self |> switchWeapon(WeaponType machineGun)
-            elif is_key_pressed(VK_4)
+            elif application.weapon4Button
                 self |> switchWeapon(WeaponType chainGun)
-        if is_key_pressed(VK_RIGHT)
+        if application.rightButton
             turnAngle += 1.
-        if is_key_pressed(VK_LEFT)
+        if application.leftButton
             turnAngle -= 1.
         if turnAngle != 0.
             self |> turn(turnAngle * speed_a * frame_time)
@@ -1460,13 +1487,13 @@ def update ( var self:Player )
             changed = true
         var forward = 0.
         var sideways = 0.
-        if is_key_pressed(VK_UP)
+        if application.forwardButton
             forward += speed
-        if is_key_pressed(VK_DOWN)
+        if application.backwardButton
             forward -= speed
-        if is_key_pressed(VK_A)
+        if application.strafeLeftButton
             sideways -= speed
-        if is_key_pressed(VK_D)
+        if application.strafeRightButton
             sideways += speed
         if forward != 0.
             if sideways != 0.
@@ -1488,9 +1515,9 @@ def update ( var self:Player )
                 else
                     a.spriteIndex += 1
                     weaponSprite = a.sprites[a.spriteIndex]
-        if is_key_pressed(VK_SPACE)
+        if application.activateButton
             player |> activate()
-        if is_key_pressed(VK_LCONTROL) || is_key_pressed(VK_RCONTROL)
+        if application.shootButton
             player |> shoot()
 
 def alert ( xy:float2; radius:float )
@@ -1647,7 +1674,7 @@ def updatePalette
         else
             for p,d in GamePalette, pal
                 d = pack_float_to_byte ( unpack_byte_to_float(p) * levelFade )
-        set_palette(pal)
+        application->set_palette(pal)
         levelFade += dLevelFade * frame_time
         if dLevelFade > 0. && levelFade >= 1.
             dLevelFade = 0.
@@ -1668,9 +1695,9 @@ def updatePalette
             let tc = float4(255.,fc.y*ifactor,fc.z*ifactor,fc.w)
             let rc = lerp(fc, tc, float4(factor))
             d = pack_float_to_byte ( clamp(rc, float4(0.), float4(255.)) )
-        set_palette(pal)
+        application->set_palette(pal)
     else
-        set_palette(GamePalette)
+        application->set_palette(GamePalette)
 
 def setupLevel ( index:int )
     to_log(LOG_INFO, "LOADING LEVEL {index}\n}")
@@ -1728,8 +1755,6 @@ def setupLevel ( index:int )
                 var category : EnemyCategory
                 var patrolling = false
                 var orientable = true
-                var ex = x
-                var ey = y
                 if isStandingGuard(m1)
                     category = EnemyCategory guard
                 elif isPatrollingGuard(m1)
@@ -1777,12 +1802,11 @@ def setupLevel ( index:int )
                     print("BLUE PACMAN GHOST AT {x},{y}\n")
                 else
                     print("UNKNOWN ENEMY AT {x},{y}\n")
-                    // to_log(LOG_INFO, "{x} {y} {m1} {category} {patrolling} {orientable}\n")
                 // todo: add bosses
                 var edx, edy : float
                 getEntityDirection(m1 & 3,edx,edy)
                 enemies |> push <| new [[Enemy
-                    pos = float2(ex,ey) + float2(0.5),
+                    pos = float2(x,y) + float2(0.5),
                     dir = float2(edx, edy),
                     category = Category enemy,
                     enemyCategory = category,
@@ -2048,7 +2072,7 @@ def updatePlayer
     // note: the section bellow is for debugging only. It allows to save and load player position
     if !ENABLE_CHEAT_CODEDS
         return
-    if is_key_pressed(VK_F1)
+    if application.cheatGiveEverything
         to_log(LOG_INFO, "player was given everything\n")
         player.goldKey = true
         player.silverKey = true
@@ -2056,8 +2080,7 @@ def updatePlayer
         player.hasWeapon[int(WeaponType chainGun)] = true
         player.ammo = 199
         player.health = 200
-    if is_key_pressed(VK_F9)
-        sleep(100u)
+    if application.cheat1
         // spawn an enemy at 34-60
         let X = 34
         let Y = 61
@@ -2072,8 +2095,7 @@ def updatePlayer
             health = enemyClasses[int(category)].hp,
             orientable = true
         ]]
-        print("spawn dog\n")
-    if is_key_pressed(VK_F8)
+    if application.cheat2
         // spawn column
         let X = 34
         let Y = 60
@@ -2083,8 +2105,8 @@ def updatePlayer
             spriteIndex = int(Props Tree) - 21
         ]]
         collision_plane[X][Y] = true
-    if is_key_pressed(VK_F10)
-        if is_key_pressed(VK_LSHIFT) || is_key_pressed(VK_RSHIFT)
+    if application.cheatSwitchLevel
+        if application.cheatSwitchLevelShift
             if levelIndex<8
                 switchLevel(8)  // HANS GROSSE
             else
@@ -2378,13 +2400,15 @@ def draw ( level:Level; var bmp:Bitmap8# )
 
 // ------------------------------------------------------------
 
-def woof3d_main
+def woof3d_main ( app:Application? )
+    application = app
     InitFiles()
     setupLevel(0)
     levelFade = 0.
     dLevelFade = LEVEL_FADE_FACTOR
     play_game_sound(SoundName FART)
-    raster_app_main <| $ ( dt, backbuffer )
-        updateGame(dt)
-        draw(level, backbuffer)
-        set_app_sound_position(player.pos, player.dir)
+
+def woof3d_update ( dt:float; var backbuffer:Bitmap8# )
+    updateGame(dt)
+    draw(level, backbuffer)
+    application->set_app_sound_position(player.pos, player.dir)

@@ -13,7 +13,7 @@ let DRAW_VISIBILITY = false
 
 let DRAW_COLLISION = false
 
-def drawWalls ( level:Level; var bmp:Bitmap8 )
+def drawWalls ( level:Level; var bmp:Bitmap8# )
     for i in range(bmp.size.x)
         // current column position on the camera plane
         let shift = fov * (float(i << 1) - pixelWidth) / (pixelWidth)
@@ -22,39 +22,19 @@ def drawWalls ( level:Level; var bmp:Bitmap8 )
         var dy = player.dir.y + shift * player.dir.x
         var tres = trace(player.pos.x,player.pos.y,dx,dy,FLT_MAX,true)
         zIndex[i] = tres.t
-        drawWallPixels(i,tres.t,tres.tx,WallPics[tres.textureIndex],bmp) // causes bug in jit. why?
+        lock_u8(WallPics[tres.textureIndex].data) <| $ ( tex )
+            drawWallPixels(i,tres.t,tres.tx,tex,bmp) // causes bug in jit. why?
 
-[sideeffects,jit,hint(unsafe_range_check,noalias=span,noalias=tspan)]
-def rast_hspan ( var span:uint8?; tspan:uint8 const?; uvY,dUVY:float; _count:int )
-    unsafe
-        var count = _count
-        var count4 = count >> 2
-        count &= 3
-        var PSP = span
-        var uv4 = float4(uvY) + float4(0.,1.,2.,3.) * float4(dUVY)
-        var duv4 = float4(dUVY) * 4.
-        for P in range(count4)
-            u8x4_gather_store(PSP,tspan,int4(uv4))
-            PSP += 4
-            uv4 += duv4
-        var uvYT = uv4.x
-        for P in range(count)
-            PSP[P] = tspan[int(uvYT)]
-            uvYT += dUVY
-
-def drawWallPixels ( i:int; t,tx:float; tex:WallTexture; var bmp:Bitmap8 )
+def drawWallPixels ( i:int; t,tx:float; tex:array<uint8>#; var bmp:Bitmap8# )
     var h = wallHeight / (2. * t)
     let y = floori(pixelHeight / 2. - h)
     let ymin = max(0, y)
-    let ymax = min(floori(pixelHeight / 2. + h), bmp.size.x-1)
+    let ymax = min(floori(pixelHeight / 2. + h), bmp.size.y)
     let dh = 0.5 /  (h+1.)
     var uvY = (float(ymin - y) * dh) * 64.0
     let dUVY = dh * 64.0
     let texelOffset = 64 * floori(63. * clamp(tx,0.,1.))
-    unsafe
-        var pspan = addr(bmp.data[i*bmp.size.y+ymin])
-        var tspan = addr(tex.data[texelOffset])
-        rast_hspan(pspan,tspan,uvY,dUVY,ymax-ymin+1)
+    rast_hspan(bmp.data,i*bmp.size.y+ymin,tex,texelOffset,uvY,dUVY,ymax-ymin)
 
 def isVisible(x,y:float)
     let f = floori(float2(x,y)-float2(0.45))
@@ -65,7 +45,7 @@ def isVisible(x,y:float)
                 return true
     return false
 
-def drawThings ( var bmp:Bitmap8 )
+def drawThings ( var bmp:Bitmap8# )
     var things : array<Entity?>
     things |> reserve ( enemies|>length + objects|>length )
     for enemy in enemies
@@ -98,7 +78,7 @@ def getEntityAngle( Direction : float2 ) : int
         EntityAngle = 8 - ((-EntityAngle) & 7)
     return EntityAngle & 7
 
-def drawThing(rx,ry,orx,ory:float; OBJ:Entity; var bmp:Bitmap8 )
+def drawThing(rx,ry,orx,ory:float; OBJ:Entity; var bmp:Bitmap8# )
     // draw
     let th = wallHeight / rx
     let tx = floori((ry / rx + fov) * wallHeight - th / 2.)
@@ -110,8 +90,8 @@ def drawThing(rx,ry,orx,ory:float; OBJ:Entity; var bmp:Bitmap8 )
         index = OBJ.spriteIndex + (Angle - PlayerAngle + 12) % 8
     drawSprite(tx, ty, th, rx, Sprites[index], bmp)
 
-def drawSprite ( x,y: int; h:float; dist:float; sprite:SpriteTexture; var bmp:Bitmap8 )
-    unsafe
+def drawSprite ( x,y: int; h:float; dist:float; sprite:SpriteTexture; var bmp:Bitmap8# )
+    lock(sprite.data) <| $ ( tspan )
         let height = int(h)
         let xmin = max(0, x)
         let xmax = min(x+height, bmp.size.x-1)
@@ -125,45 +105,40 @@ def drawSprite ( x,y: int; h:float; dist:float; sprite:SpriteTexture; var bmp:Bi
                 let col = int(uvX)
                 if col >= sprite.firstCol && col <= sprite.lastCol
                     var pixelOffset = sprite.pixelOffset[col]
-                    var colOffsetData = reinterpret<uint16?> addr(sprite.data[sprite.colOffset[col]])
-                    while true
-                        let endRow = int(*colOffsetData) / 2
-                        if endRow == 0
-                            break
-                        let startRow = int(colOffsetData[2]) / 2
-                        colOffsetData += 3
-                        let ystart = y + floori(float(startRow) * h / 64.)
-                        let ymin = max(ystart, 0)
-                        let ymax = min(y + floori(float(endRow) * h / 64.), bmp.size.y-1)
-                        if ymin < ymax
-                            let tspan = addr(sprite.data[pixelOffset])
-                            var pspan = addr(bmp.data[X*bmp.size.y+ymin])
-                            var uv0 = float(ymin - ystart) * dUVX
-                            rast_hspan(pspan,tspan,uv0,dUVX,ymax-ymin)
-                        pixelOffset += endRow - startRow
+                    unsafe
+                        var colOffsetData = reinterpret<uint16?> addr(sprite.data[sprite.colOffset[col]])
+                        while true
+                            let endRow = int(*colOffsetData) / 2
+                            if endRow == 0
+                                break
+                            let startRow = int(colOffsetData[2]) / 2
+                            colOffsetData += 3
+                            let ystart = y + floori(float(startRow) * h / 64.)
+                            let ymin = max(ystart, 0)
+                            let ymax = min(y + floori(float(endRow) * h / 64.), bmp.size.y-1)
+                            if ymin < ymax
+                                var uv0 = float(ymin - ystart) * dUVX
+                                rast_hspan(bmp.data,X*bmp.size.y+ymin,tspan,pixelOffset,uv0,dUVX,ymax-ymin)
+                            pixelOffset += endRow - startRow
             uvX += dUVX
 
-def draw2DElement ( x,y,w,h:int; var pic:Picture; var bmp:Bitmap8 )
+def draw2DElement ( x,y,w,h:int; var pic:Picture; var bmp:Bitmap8# )
     var u = 0.
     let du = 1. / float(w+1)
     let dv = 1. / float(h+1)
     var DV = dv * float(pic.height)
-    for X in range(x,x+w)
-        let px = floori(u * float(pic.width))
-        unsafe
-            var pspan = addr(bmp.data[y+X*bmp.size.y])
-            var tspan = addr(pic.data[px*pic.height])
-            rast_hspan(pspan,tspan,0.,DV,h)
-        u += du
+    lock(pic.data) <| $ ( tspan )
+        for X in range(x,x+w)
+            let px = floori(u * float(pic.width))
+            rast_hspan(bmp.data,y+X*bmp.size.y,tspan,px*pic.height,0.,DV,h)
+            u += du
 
-def drawBackground ( var bmp:Bitmap8 )
+def drawBackground ( var bmp:Bitmap8# )
     let h = bmp.size.y / 2
-    unsafe
-        for x in range(bmp.size.x)
-            memset8(addr(bmp.data[x*bmp.size.y]),29u8,h)
-            memset8(addr(bmp.data[x*bmp.size.y+h]),25u8,h)
+    rast_fillRect(bmp,0,0,bmp.size.x,h,29u8)
+    rast_fillRect(bmp,0,h,bmp.size.x,h,25u8)
 
-def drawWeapon ( var bmp:Bitmap8 )
+def drawWeapon ( var bmp:Bitmap8# )
     let height = bmp.size.y
     drawSprite(
             bmp.size.x / 2 - height / 2,
@@ -175,7 +150,7 @@ def drawWeapon ( var bmp:Bitmap8 )
 
 var hudFactor = 1.
 
-def drawHUDElement(x,y,w,h:int; var pic:Picture; var bmp:Bitmap8 )
+def drawHUDElement(x,y,w,h:int; var pic:Picture; var bmp:Bitmap8# )
     var minx = max(floori(float(x)*hudFactor), 0)
     var maxx = min(floori(float(x+w)*hudFactor), bmp.size.x)
     var miny = max(floori(float(y)*hudFactor), 0)
@@ -184,7 +159,7 @@ def drawHUDElement(x,y,w,h:int; var pic:Picture; var bmp:Bitmap8 )
         return
     draw2DElement(minx,miny,maxx-minx,maxy-miny,pic,bmp)
 
-def drawHUDNum(x,y:int; num:int; var bmp:Bitmap8 )
+def drawHUDNum(x,y:int; num:int; var bmp:Bitmap8# )
     let txt = "{num}"
     for Ch,i in txt,count()
         drawHUDElement(x+i*8,y,8,16,Pictures[Ch-'0'+105],bmp)
@@ -221,7 +196,7 @@ def getHUDTextDim(text:string) : tuple<width:int;height:int>
         X += Pictures[index].width
     return [[auto X,H]]
 
-def drawHUDText(x,y:int; text:string; var bmp:Bitmap8 )
+def drawHUDText(x,y:int; text:string; var bmp:Bitmap8# )
     var X = x
     for chu in text
         if chu==' '
@@ -234,7 +209,7 @@ def drawHUDText(x,y:int; text:string; var bmp:Bitmap8 )
         drawHUDElement(X,y,W,Pictures[index].height,Pictures[index],bmp)
         X += W
 
-def drawHUD ( var bmp:Bitmap8 )
+def drawHUD ( var bmp:Bitmap8# )
     // health head (24x32)
     var frame = 0
     if playerHealth <= 0.
@@ -257,31 +232,25 @@ def drawHUD ( var bmp:Bitmap8 )
         let dim = getHUDTextDim(hudMessage)
         drawHUDText(160-dim.width/2,2,hudMessage,bmp)
 
-def drawDebugRect ( x,y,w,h:int; col:uint8; var bmp:Bitmap8 )
-    unsafe
-        for X in range(x,x+w)
-            for Y in range(y,y+h)
-                bmp.data[X*bmp.size.y+Y] = col
-
-def drawVisibility(var bmp:Bitmap8)
+def drawVisibility ( var bmp:Bitmap8# )
     for x in range(64)
         for y in range(64)
             var col = visibility_plane[x][y] ? 0u8 : 255u8
-            drawDebugRect(bmp.size.y - 64*4 - 10 + x*4,10 + y*4,4,4,col,bmp)
+            rast_fillRect(bmp,bmp.size.y - 64*4 - 10 + x*4,10 + y*4,4,4,col)
     for e in enemies
         if e.category == Category enemy
-            drawDebugRect(bmp.size.y - 64*4 - 10 + floori(e.pos.x)*4,10 + floori(e.pos.y)*4,4,4,32u8,bmp)
+            rast_fillRect(bmp,bmp.size.y - 64*4 - 10 + floori(e.pos.x)*4,10 + floori(e.pos.y)*4,4,4,32u8)
 
-def drawCollision(var bmp:Bitmap8)
+def drawCollision ( var bmp:Bitmap8# )
     for x in range(64)
         for y in range(64)
             var col = collision_plane[x][y] ? 0u8 : 255u8
-            drawDebugRect(bmp.size.y - 64*4 - 10 + x*4,10 + y*4,4,4,col,bmp)
+            rast_fillRect(bmp, bmp.size.y - 64*4 - 10 + x*4,10 + y*4,4,4,col)
     for e in enemies
         if e.category == Category enemy
-            drawDebugRect(bmp.size.y - 64*4 - 10 + floori(e.pos.x)*4,10 + floori(e.pos.y)*4,4,4,32u8,bmp)
+            rast_fillRect(bmp, bmp.size.y - 64*4 - 10 + floori(e.pos.x)*4,10 + floori(e.pos.y)*4,4,4,32u8)
 
-def draw ( level:Level; var bmp:Bitmap8 )
+def draw ( level:Level; var bmp:Bitmap8# )
     hudFactor = max(float(bmp.size.y)/200.,1.)
     pixelWidth = float(bmp.size.x)
     pixelHeight = float(bmp.size.y)

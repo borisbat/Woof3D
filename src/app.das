@@ -206,7 +206,7 @@ def update_sounds
             let nrxy = normalize(rxy)
             set_sound_pan(snd.handle, -nrxy.y )
 
-def raster_app_main ( blk: block<(dt:float; var back_buffer:Bitmap8):void> )
+def raster_app_main ( blk: block<(dt:float; var back_buffer:Bitmap8#):void> )
     if glfwInit()==0
 		panic("can't init glfw")
     defer <|
@@ -242,9 +242,10 @@ def raster_app_main ( blk: block<(dt:float; var back_buffer:Bitmap8):void> )
         glfwGetFramebufferSize(window, display_w, display_h)
         update_bb(display_w, display_h)
         // callbakc
-        var bmp = [[Bitmap8 size=int2(bb_width,bb_height), data=unsafe(addr(bb_data[0]))]]
         let t0 = ref_time_ticks()
-        invoke(blk, fmsec, bmp)
+        var bmp <- [[Bitmap8 size=int2(bb_width,bb_height), data<-bb_data]]
+        invoke(blk, fmsec, unsafe(reinterpret<Bitmap8#> bmp))
+        bb_data <- bmp.data
         let dt = get_time_usec(t0)
         msecs = msecs*0.95 + float(dt/1000)*0.05
         glfwSetWindowTitle(window, "{bb_width}x{bb_height} frame:{fmt_msec(fmsec)} rast:{fmt_msec(msecs)}")

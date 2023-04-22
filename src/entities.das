@@ -150,33 +150,3 @@ def isOrangePacManGhost(m1:int)
 
 def isBluePacManGhost(m1:int)
     return (m1==227)
-
-/*
-class HansEnemy : Enemy
-    def HansEnemy(X,Y:int)
-        Enemy`Enemy(self, X, Y, 300, [{auto 304; 305; 306; 303}], true)
-
-class SchabbsEnemy : Enemy
-    def SchabbsEnemy(X,Y:int)
-        Enemy`Enemy(self, X, Y, 312, [{auto 313; 314; 315; 316}], true)
-
-class FakeHitlerEnemy : Enemy
-    def FakeHitlerEnemy(X,Y:int)
-        Enemy`Enemy(self, X, Y, 321, [{auto 328; 329; 330; 331; 332; 333}], true)
-
-class HitlerEnemy : Enemy
-    def HitlerEnemy(X,Y:int)
-        Enemy`Enemy(self, X, Y, 349, [{auto 353; 354; 355; 356; 357; 358; 359; 352}], true)
-
-class OttoEnemy : Enemy
-    def OttoEnemy(X,Y:int)
-        Enemy`Enemy(self, X, Y, 364, [{auto 366; 367; 368; 369}], true)
-
-class GretelEnemy : Enemy
-    def GretelEnemy(X,Y:int)
-        Enemy`Enemy(self, X, Y, 389, [{auto 393; 394; 395; 392}], true)
-
-class FettgesichtEnemy : Enemy
-    def FettgesichtEnemy(X,Y:int)
-        Enemy`Enemy(self, X, Y, 400, [{auto 404; 405; 406; 407}], true)
-*/

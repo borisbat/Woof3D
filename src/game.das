@@ -339,15 +339,15 @@ def trace ( px,py,pdx,pdy,maxDist:float; writeVis:bool ) : tuple<t:float; tx:flo
     // ray casting loop
     while t < maxDist
         if writeVis
-            visibility_plane[OFS(cx,cy)] = true
-        m0 = level.plane0[OFS(cx,cy)]
+            visibility_plane[cx][cy] = true
+        m0 = level.plane0[cx][cy]
         if m0 <= 63
             // hit a wall
             var wallShift = 0.
-            let m1 = level.plane1[OFS(cx,cy)]
+            let m1 = level.plane1[cx][cy]
             if m1 == 98
                 // pushwall
-                assume timer = timer_plane[OFS(cx,cy)]
+                assume timer = timer_plane[cx][cy]
                 if timer.active
                     wallShift = timer.t
                     if timer.dx != 0
@@ -396,7 +396,7 @@ def trace ( px,py,pdx,pdy,maxDist:float; writeVis:bool ) : tuple<t:float; tx:flo
         elif m0 <= 101
             // hit a door
             var doorShfit = 0.
-            assume timer = timer_plane[OFS(cx,cy)]
+            assume timer = timer_plane[cx][cy]
             if timer.active
                 doorShfit = timer.t
             if (m0 & 1) == 0
@@ -551,25 +551,25 @@ def canMoveTo ( self:Player; XY:float2 )
 def canMoveTo ( XY:float2;r:float )
     let f = fract(XY)
     let i = floori(XY)
-    if collision_plane[OFS(i)]
+    if collision_plane[i.x][i.y]
         return false
     if f.x < r
-        if collision_plane[OFS(i.x-1,i.y)]
+        if collision_plane[i.x-1][i.y]
             return false
-        if f.y < r && collision_plane[OFS(i.x-1,i.y-1)]
+        if f.y < r && collision_plane[i.x-1][i.y-1]
             return false
-        if f.y > 1.-r && collision_plane[OFS(i.x-1,i.y+1)]
+        if f.y > 1.-r && collision_plane[i.x-1][i.y+1]
             return false
     if f.x > 1.-r
-        if collision_plane[OFS(i.x+1,i.y)]
+        if collision_plane[i.x+1][i.y]
             return false
-        if f.y < r && collision_plane[OFS(i.x+1,i.y-1)]
+        if f.y < r && collision_plane[i.x+1][i.y-1]
             return false
-        if f.y > 1.-r && collision_plane[OFS(i.x+1,i.y+1)]
+        if f.y > 1.-r && collision_plane[i.x+1][i.y+1]
             return false
-    if f.y < r && collision_plane[OFS(i.x,i.y-1)]
+    if f.y < r && collision_plane[i.x][i.y-1]
         return false
-    if f.y > 1.-r && collision_plane[OFS(i.x,i.y+1)]
+    if f.y > 1.-r && collision_plane[i.x][i.y+1]
         return false
     return true
 
@@ -746,7 +746,8 @@ def shoot ( var self:Player )
             for enemy in enemies
                 if enemy.category != Category enemy
                     continue
-                if !visibility_plane [OFS(floori(enemy.pos))]
+                let epos = floori(enemy.pos)
+                if !visibility_plane[epos.x][epos.y]
                     continue
                 var prc = getPlayerRelativeCoordinates(enemy.pos)
                 if prc.rpos.x < 0.
@@ -768,32 +769,33 @@ def isTooCloseToDoor ( var self:Player; XY:int2 )
 
 def activate ( var self:Player )
     with self
-        var XY = floori(pos)
-        var DXY : int2
+        var X = floori(pos.x)
+        var Y = floori(pos.y)
+        var DX, DY : int
         if abs(dir.x) >= abs(dir.y)
-            DXY.x = dir.x >= 0. ? 1 : -1
-            XY.x += DXY.x
+            DX = dir.x >= 0. ? 1 : -1
+            X += DX
         else
-            DXY.y = dir.y >= 0. ? 1 : -1
-            XY.y += DXY.y
-        let m0 = level.plane0[OFS(XY)]
-        let m1 = level.plane1[OFS(XY)]
-        if m0==21 && DXY.x!=0
+            DY = dir.y >= 0. ? 1 : -1
+            Y += DY
+        let m0 = level.plane0[X][Y]
+        let m1 = level.plane1[X][Y]
+        if m0==21 && DX!=0
             // elevator
             switchLevel(levelIndex+1)
         elif m0>=90 && m0<=101
             // door
             if (m0==92 || m0==93) && !goldKey
                 // gold-locked door
-                play_game_audio_2d(AudioName HALTSND, float2(XY)+float2(0.5), DOOR_SOUND_RADIUS)
+                play_game_audio_2d(AudioName HALTSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS)
                 hudText("GOLD KEY REQUIRED!", 2.)
                 return
             if (m0==94 || m0==95) && !silverKey
                 // silver-locked door
-                play_game_audio_2d(AudioName HALTSND, float2(XY)+float2(0.5), DOOR_SOUND_RADIUS)
+                play_game_audio_2d(AudioName HALTSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS)
                 hudText("SILVER KEY REQUIRED!", 2.)
                 return
-            assume timer = timer_plane[OFS(XY)]
+            assume timer = timer_plane[X][Y]
             if !timer.active
                 timer = [[Timer
                     t = 0.,
@@ -801,30 +803,30 @@ def activate ( var self:Player )
                     active = true,
                     isDoor = true
                 ]]
-                play_game_sound_2d(SoundName OPENDOORSND, float2(XY)+float2(0.5), DOOR_SOUND_RADIUS, DOOR_SOUND_PLAYBACK_RATE)
+                play_game_sound_2d(SoundName OPENDOORSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS, DOOR_SOUND_PLAYBACK_RATE)
         elif m1 == 98
             // pushwall
-            assume timer = timer_plane[OFS(XY)]
-            if !timer.active && level.plane0[OFS(XY+DXY)] >= 106
+            assume timer = timer_plane[X][Y]
+            if !timer.active && level.plane0[X+DX][Y+DY] >= 106
                 // there is no active timer for this wall, and it can move backwards
                 timer = [[Timer
                     t = 0.,
-                    dx = DXY.x,
-                    dy = DXY.y,
+                    dx = DX,
+                    dy = DY,
                     steps = 2,
                     opening = true,
                     active = true,
                     isWall = true
                 ]]
-                play_game_sound_2d(SoundName OPENDOORSND, float2(XY)+float2(0.5), DOOR_SOUND_RADIUS)
+                play_game_sound_2d(SoundName OPENDOORSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS)
         else
-            assume timer = timer_plane[OFS(XY)]
+            assume timer = timer_plane[X][Y]
             if !timer.active
                 timer = [[Timer
                     t = 0.5,
                     active = true
                 ]]
-                play_game_audio_2d(AudioName DONOTHINGSND, float2(XY)+float2(0.5), DOOR_SOUND_RADIUS)
+                play_game_audio_2d(AudioName DONOTHINGSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS)
 
 def clearKeys ( var self:Player )
     with self
@@ -855,11 +857,11 @@ struct Timer
     isDoor : bool
     isWall : bool
 
-var timer_plane : Timer[64*64]
+var timer_plane : Timer[64][64]
 
-var collision_plane : bool[64*64]
+var collision_plane : bool[64][64]
 
-var visibility_plane : bool[64*64]
+var visibility_plane : bool[64][64]
 
 var zIndex : array<float>
 
@@ -939,10 +941,12 @@ def setupLevel ( index:int )
     level := Levels[index]
     delete objects
     delete enemies
-    for b in collision_plane
-        b = false
-    for t in timer_plane
-        t.active = false
+    for by in collision_plane
+        for b in by
+            b = false
+    for ty in timer_plane
+        for t in ty
+            t.active = false
     if becauseOfDeath
         player = Player()
     else
@@ -950,15 +954,15 @@ def setupLevel ( index:int )
     for y in range(64)
         for x in range(64)
             // structual
-            let m0 = level.plane0[OFS(x,y)]
+            let m0 = level.plane0[x][y]
             if m0 <= 63
                 // wall
-                collision_plane[OFS(x,y)] = true
+                collision_plane[x][y] = true
             elif 90 <= m0 && m0 <= 101
                 // door
-                collision_plane[OFS(x,y)] = true
+                collision_plane[x][y] = true
             // entities
-            let m1 = level.plane1[OFS(x,y)]
+            let m1 = level.plane1[x][y]
             if isPlayer(m1)
                 // player
                 player.pos = float2(x,y) + float2(0.5)
@@ -971,7 +975,7 @@ def setupLevel ( index:int )
                     pos = float2(x,y) + float2(0.5)
                 ]]
                 if isBlocking(m1)
-                    collision_plane[OFS(x,y)] = true
+                    collision_plane[x][y] = true
             elif isPushWall(m1)
                 pass
                 // pushwall
@@ -1124,7 +1128,8 @@ def update ( var self:Enemy )
         attackTimer = max ( attackTimer - 1. / 60. * frame_time, 0. )
         agroTimer = max ( agroTimer - 1. / 60. * frame_time, 0. )
         // agro resets if we see the player regardless of what we are doing
-        if visibility_plane[OFS(floori(pos))]   // player sees us, so we may (or may not) be able to see them
+        let ipos = floori(pos)
+        if visibility_plane[ipos.x][ipos.y]   // player sees us, so we may (or may not) be able to see them
             var dxy = normalize(player.pos - pos)
             var angle = dot(dxy,dir)
             if !orientable || angle>=0.1
@@ -1133,14 +1138,14 @@ def update ( var self:Enemy )
                     play_game_sound_2d(agroSound, pos, AGRO_SOUND_RADIUS)
                 agroTimer = AGRO_TIME
         if animation == null || running
-            if agroTimer!=0. && attackTimer==0. && player.health>0 && visibility_plane[OFS(floori(pos))]
+            if agroTimer!=0. && attackTimer==0. && player.health>0 && visibility_plane[ipos.x][ipos.y]
                 // we try to shoot, if we are at the right distance
                 let dist = length(player.pos - pos)
                 let attackDistance = enemyClasses[int(enemyCategory)].attackDistance
                 if dist>0. && dist<=attackDistance
                     self |> attack()
                     return
-            if agroTimer!=0. && player.health>0 && visibility_plane[OFS(floori(pos))]
+            if agroTimer!=0. && player.health>0 && visibility_plane[ipos.x][ipos.y]
                 // we rotate towards player
                 let dist = length(player.pos - pos)
                 let comfortDistance = enemyClasses[int(enemyCategory)].comfortDistance
@@ -1231,68 +1236,71 @@ def updateEnemies
                 enemy.spriteIndex = enemy.animation.sprites[enemy.animation.spriteIndex]
 
 def updateTimers
-    for timer,index in timer_plane,count()
-        if !timer.active
-            continue
-        let XY = int2(index & 63,index >> 6)
-        if timer.isDoor
-            if timer.opening
-                if timer.t < 1.
-                    timer.t += DOOR_OPEN_SPEED / 64. * frame_time
+    for Y in range(64)
+        for X in range(64)
+            assume timer = timer_plane[X][Y]
+            if !timer.active
+                continue
+            let XY = int2(X,Y)
+            if timer.isDoor
+                if timer.opening
+                    if timer.t < 1.
+                        timer.t += DOOR_OPEN_SPEED / 64. * frame_time
+                    else
+                        timer.t += 1. / 60. * frame_time
+                    if timer.t >= 1.
+                        collision_plane[X][Y] = false
+                    if timer.t >= DOOR_STAYS_CLOSED
+                        timer.t = DOOR_STAYS_CLOSED
+                        timer.opening = false
                 else
-                    timer.t += 1. / 60. * frame_time
+                    if timer.t < 1.
+                        timer.t -= DOOR_CLOSE_SPPED / 64. * frame_time
+                    else
+                        timer.t -= 1./ 60. * frame_time
+                    if timer.t <= 1.
+                        if !collision_plane[X][Y]
+                            var enemyTooCloseToDoor = false
+                            for enemy in enemies
+                                if enemy.category == Category enemy
+                                    let edist = abs(floori(enemy.pos)-XY)
+                                    if edist.x<=1 && edist.y<=1
+                                        enemyTooCloseToDoor = true
+                                        break
+                            if enemyTooCloseToDoor || player|>isTooCloseToDoor(XY)
+                                timer.t = DOOR_STAYS_CLOSED
+                            else
+                                collision_plane[X][Y] = true
+                                play_game_sound_2d(SoundName CLOSEDOORSND, float2(XY)+float2(0.5), DOOR_SOUND_RADIUS, DOOR_SOUND_PLAYBACK_RATE)
+                                // TODO: remove dead body from doorway
+                    if timer.t <= 0.
+                        timer.t = 0.
+                        timer.active = false
+                        assert(collision_plane[X][Y])
+            elif timer.isWall
+                timer.t += 1. / 60. * frame_time
                 if timer.t >= 1.
-                    collision_plane[index] = false
-                if timer.t >= DOOR_STAYS_CLOSED
-                    timer.t = DOOR_STAYS_CLOSED
-                    timer.opening = false
+                    let DX = timer.dx
+                    let DY = timer.dy
+                    let wallValue = level.plane0[X][Y]
+                    level.plane0[X][Y] = level.plane0[X-DX][Y-DY]
+                    level.plane0[X+DX][Y+DY] = wallValue
+                    level.plane1[X][Y] = 0
+                    collision_plane[X][Y] = false
+                    collision_plane[X+DX][Y+DY] = true
+                    timer.steps -= 1
+                    if timer.steps>0 && !collision_plane[X+DX+DX][Y+DY+DY]
+                        // wall moves one more step
+                        level.plane1[X+DX][Y+DY] = 98
+                        timer.t = 0.
+                        timer_plane[X+DX][Y+DY] = timer
+                    timer.active = false
             else
-                if timer.t < 1.
-                    timer.t -= DOOR_CLOSE_SPPED / 64. * frame_time
-                else
-                    timer.t -= 1./ 60. * frame_time
-                if timer.t <= 1.
-                    if !collision_plane[index]
-                        var enemyTooCloseToDoor = false
-                        for enemy in enemies
-                            if enemy.category == Category enemy
-                                let edist = abs(floori(enemy.pos)-XY)
-                                if edist.x<=1 && edist.y<=1
-                                    enemyTooCloseToDoor = true
-                                    break
-                        if enemyTooCloseToDoor || player|>isTooCloseToDoor(XY)
-                            timer.t = DOOR_STAYS_CLOSED
-                        else
-                            collision_plane[index] = true
-                            play_game_sound_2d(SoundName CLOSEDOORSND, float2(XY)+float2(0.5), DOOR_SOUND_RADIUS, DOOR_SOUND_PLAYBACK_RATE)
-                            // TODO: remove dead body from doorway
+                // any random timer
+                timer.t -= 1. / 60. * frame_time
                 if timer.t <= 0.
                     timer.t = 0.
                     timer.active = false
-                    assert(collision_plane[index])
-        elif timer.isWall
-            timer.t += 1. / 60. * frame_time
-            if timer.t >= 1.
-                let DXY = int2(timer.dx,timer.dy)
-                let wallValue = level.plane0[index]
-                level.plane0[index] = level.plane0[OFS(XY-DXY)]
-                level.plane0[OFS(XY+DXY)] = wallValue
-                level.plane1[index] = 0
-                collision_plane[index] = false
-                collision_plane[OFS(XY+DXY)] = true
-                timer.steps -= 1
-                if timer.steps>0 && !collision_plane[OFS(XY+DXY+DXY)]
-                    // wall moves one more step
-                    level.plane1[OFS(XY+DXY)] = 98
-                    timer.t = 0.
-                    timer_plane[OFS(XY+DXY)] = timer
-                timer.active = false
-        else
-            // any random timer
-            timer.t -= 1. / 60. * frame_time
-            if timer.t <= 0.
-                timer.t = 0.
-                timer.active = false
 
 var ENABLE_CHEAT_CODEDS = true
 
@@ -1340,7 +1348,7 @@ def updatePlayer
             pos = float2(X,Y) + float2(0.5),
             spriteIndex = int(Props Tree) - 21
         ]]
-        collision_plane[OFS(X,Y)] = true
+        collision_plane[X][Y] = true
     if is_key_pressed(VK_F10)
         if is_key_pressed(VK_LSHIFT) || is_key_pressed(VK_RSHIFT)
             if levelIndex<8

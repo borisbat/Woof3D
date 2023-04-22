@@ -152,8 +152,8 @@ def InitMapHead()
     to_log(LOG_INFO,"Loaded MAPHEAD.WL6\n")
 
 struct Level
-    plane0 : int[64*64]
-    plane1 : int[64*64]
+    plane0 : int[64][64]
+    plane1 : int[64][64]
 
 var Levels : Level[TOTAL_LEVELS]
 
@@ -169,15 +169,15 @@ def InitGameMap()
             array_view(bytes, int(plane0Offset), int(plane0Size)) <| $ ( plane0View )
                 var cdec <- carmackDecode(plane0View)
                 var rdec <- rlewDecode(cdec)
-                for s,d in rdec, Levels[level].plane0
-                    d = int(s)
+                for x in range(64)
+                    for y in range(64)
+                        Levels[level].plane0[x][y] = int(rdec[x+y*64])
             array_view(bytes, int(plane1Offset), int(plane1Size)) <| $ ( plane1View )
                 var cdec <- carmackDecode(plane1View)
                 var rdec <- rlewDecode(cdec)
-                for s,d in rdec, Levels[level].plane1
-                    d = int(s)
-            assert(Levels[level].plane0 |> length == 64*64, "invalid plane0 size")
-            assert(Levels[level].plane1 |> length == 64*64, "invalid plane1 size")
+                for x in range(64)
+                    for y in range(64)
+                        Levels[level].plane1[x][y] = int(rdec[x+y*64])
     to_log(LOG_INFO,"Loaded GAMEMAPS.WL6\n")
 
 struct WallTexture
@@ -430,10 +430,4 @@ def InitFiles
     InitResources()
     InitAudio()
     InitPics()
-
-def OFS(x,y:int)
-    return x + (y<<6)
-
-def OFS(xy:int2)
-    return xy.x + (xy.y<<6)
 

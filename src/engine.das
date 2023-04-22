@@ -60,7 +60,7 @@ def isVisible(x,y:float)
     let t = floori(float2(x,y)+float2(0.45))
     for Y in range(f.y,t.y+1)
         for X in range(f.x,t.x+1)
-            if visibility_plane[OFS(X,Y)]
+            if visibility_plane[X][Y]
                 return true
     return false
 
@@ -71,13 +71,15 @@ def drawThings ( var bmp:Bitmap8 )
     for enemy in enemies
         var prc = getPlayerRelativeCoordinates(enemy.pos)
         if prc.rpos.x>0.05 && abs(prc.rpos.y)<prc.rpos.x + 1.
-            if visibility_plane[OFS(floori(enemy.pos))]
+            let epos = floori(enemy.pos)
+            if visibility_plane[epos.x][epos.y]
                 enemy.prc = prc
                 things |> push ( enemy )
     for object in objects
         var prc = getPlayerRelativeCoordinates(object.pos)
         if prc.rpos.x>0.05 && abs(prc.rpos.y)<prc.rpos.x + 1.
-            if visibility_plane[OFS(floori(object.pos))]
+            let opos = floori(object.pos)
+            if visibility_plane[opos.x][opos.y]
                 object.prc = prc
                 things |> push ( object )
     things |> sort <| $ ( a,b : Entity? )
@@ -293,7 +295,7 @@ def drawDebugRect ( x,y,w,h:int; col:uint8; var bmp:Bitmap8 )
 def drawVisibility(var bmp:Bitmap8)
     for x in range(64)
         for y in range(64)
-            var col = visibility_plane[OFS(x,y)] ? 0u8 : 255u8
+            var col = visibility_plane[x][y] ? 0u8 : 255u8
             drawDebugRect(bmp.size.y - 64*4 - 10 + x*4,10 + y*4,4,4,col,bmp)
     for e in enemies
         if e.category == Category enemy
@@ -302,7 +304,7 @@ def drawVisibility(var bmp:Bitmap8)
 def drawCollision(var bmp:Bitmap8)
     for x in range(64)
         for y in range(64)
-            var col = collision_plane[OFS(x,y)] ? 0u8 : 255u8
+            var col = collision_plane[x][y] ? 0u8 : 255u8
             drawDebugRect(bmp.size.y - 64*4 - 10 + x*4,10 + y*4,4,4,col,bmp)
     for e in enemies
         if e.category == Category enemy
@@ -314,8 +316,9 @@ def draw ( level:Level; var bmp:Bitmap8 )
     pixelHeight = float(bmp.size.y)
     wallHeight = float(pixelWidth) / (2. * fov)
     zIndex |> resize(bmp.size.x)
-    for v in visibility_plane
-        v = false
+    for vy in visibility_plane
+        for v in vy
+            v = false
     drawBackground(bmp)
     drawWalls(level, bmp)
     drawThings(bmp)

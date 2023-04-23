@@ -1,8 +1,8 @@
 options persistent_heap
 
-require rast2d
 require woof3d
 
+require daslib/raster_boost
 require glfw/glfw_boost
 require opengl/opengl_boost
 require glsl/glsl_opengl

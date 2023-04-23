@@ -7,8 +7,7 @@ require strings
 require daslib/array_boost
 require daslib/random
 require daslib/algorithm
-
-require rast2d
+require daslib/raster_boost
 
 // -------------------- global configuation --------------------
 
@@ -2159,7 +2158,7 @@ def drawWallPixels ( i:int; t,tx:float; tex:array<uint8>#; var bmp:Bitmap8# )
     var uvY = (float(ymin - y) * dh) * 64.0
     let dUVY = dh * 64.0
     let texelOffset = 64 * floori(63. * clamp(tx,0.,1.))
-    rast_hspan(bmp.data,i*bmp.size.y+ymin,tex,texelOffset,uvY,dUVY,ymax-ymin)
+    rast_hspan_u8(bmp.data,i*bmp.size.y+ymin,tex,texelOffset,uvY,dUVY,ymax-ymin)
 
 def isVisible(x,y:float)
     let f = floori(float2(x,y)-float2(0.45))
@@ -2242,7 +2241,7 @@ def drawSprite ( x,y: int; h:float; dist:float; sprite:SpriteTexture; var bmp:Bi
                         let ymax = min(y + floori(float(endRow) * h / 64.), bmp.size.y-1)
                         if ymin < ymax
                             var uv0 = float(ymin - ystart) * dUVX
-                            rast_hspan(bmp.data,X*bmp.size.y+ymin,tspan,pixelOffset,uv0,dUVX,ymax-ymin)
+                            rast_hspan_u8(bmp.data,X*bmp.size.y+ymin,tspan,pixelOffset,uv0,dUVX,ymax-ymin)
                         pixelOffset += endRow - startRow
             uvX += dUVX
 
@@ -2254,7 +2253,7 @@ def draw2DElement ( x,y,w,h:int; var pic:Picture; var bmp:Bitmap8# )
     lock(pic.data) <| $ ( tspan )
         for X in range(x,x+w)
             let px = floori(u * float(pic.width))
-            rast_hspan(bmp.data,y+X*bmp.size.y,tspan,px*pic.height,0.,DV,h)
+            rast_hspan_u8(bmp.data,y+X*bmp.size.y,tspan,px*pic.height,0.,DV,h)
             u += du
 
 def drawBackground ( var bmp:Bitmap8# )

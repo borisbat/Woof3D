@@ -1629,8 +1629,7 @@ def clearKeys ( var self:Player )
 
 def die ( var self:Player )
     self.health = 0
-    let random_death_snd <- [{auto SoundName DEATHSCREAM7SND; SoundName DEATHSCREAM8SND; SoundName DEATHSCREAM9SND}]
-    play_game_sound(random_death_snd[ random_int(seed) % 3])
+    play_game_sound(SoundName DEATHSCREAM5SND)
 
 def takeDamage ( var self:Player; DAMAGE:int )
     with self

@@ -1440,6 +1440,7 @@ def collect ( var self:Player; XY:int2 )
                 elif isTreasure(m1)
                     collected |> push(index)
                     play_game_audio(treasureAudio[m1-52])
+                    flashScreen(float4(0.,0.,1.,1.),float4(255.,255.,0.,0.), 3. / 60.)
                 elif col == Collectible MachineGun || col == Collectible Chaingun
                     let wep = (col==Collectible MachineGun) ? WeaponType machineGun : WeaponType chainGun
                     if !hasWeapon[int(wep)] || ammo<199

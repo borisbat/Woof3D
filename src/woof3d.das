@@ -457,6 +457,7 @@ def InitFiles
 // -------------------- sound system --------------------
 
 enum SoundName
+    NONE = -1
     ACHTUNG =                0
     DOGBARK =                2
     OPENDOORSND =            3
@@ -504,9 +505,8 @@ enum SoundName
     KEINSND =                110                    // EPISODE 5 BOSS SIGHTING
     MEINSND =                113                    // EPISODE 6 BOSS DIE
     ROSESND =                116                    // EPISODE 5 BOSS DIE
-
-enum AudioName
-    HITWALLSND              // 0
+// audio
+    HITWALLSND = 1000       // 0
     SELECTWPNSND            // 1
     SELECTITEMSND           // 2
     HEARTBEATSND            // 3
@@ -517,25 +517,25 @@ enum AudioName
     SCHABBSTHROWSND         // 8
     PLAYERDEATHSND          // 9
     DOGDEATHSND             // 10
-    ATKGATLINGSND           // 11
+    ATKGATLINGSND_          // 11
     GETKEYSND               // 12
     NOITEMSND               // 13
     WALK1SND                // 14
     WALK2SND                // 15
-    TAKEDAMAGESND           // 16
+    TAKEDAMAGESND_          // 16
     GAMEOVERSND             // 17
-    OPENDOORSND             // 18
-    CLOSEDOORSND            // 19
+    OPENDOORSND_            // 18
+    CLOSEDOORSND_           // 19
     DONOTHINGSND            // 20
     HALTSND                 // 21
-    DEATHSCREAM2SND         // 22
+    DEATHSCREAM2SND_        // 22
     ATKKNIFESND             // 23
-    ATKPISTOLSND            // 24
-    DEATHSCREAM3SND         // 25
-    ATKMACHINEGUNSND        // 26
+    ATKPISTOLSND_           // 24
+    DEATHSCREAM3SND_        // 25
+    ATKMACHINEGUNSND_       // 26
     HITENEMYSND             // 27
     SHOOTDOORSND            // 28
-    DEATHSCREAM1SND         // 29
+    DEATHSCREAM1SND_        // 29
     GETMACHINESND           // 30
     GETAMMOSND              // 31
     SHOOTSND                // 32
@@ -546,87 +546,81 @@ enum AudioName
     BONUS3SND               // 37
     GETGATLINGSND           // 38
     ESCPRESSEDSND           // 39
-    LEVELDONESND            // 40
+    LEVELDONESND_           // 40
     DOGBARKSND              // 41
     ENDBONUS1SND            // 42
     ENDBONUS2SND            // 43
     BONUS1UPSND             // 44
     BONUS4SND               // 45
-    PUSHWALLSND             // 46
+    PUSHWALLSND_            // 46
     NOBONUSSND              // 47
     PERCENT100SND           // 48
     BOSSACTIVESND           // 49
-    MUTTISND                // 50
-    SCHUTZADSND             // 51
-    AHHHGSND                // 52
-    DIESND                  // 53
-    EVASND                  // 54
-    GUTENTAGSND             // 55
-    LEBENSND                // 56
-    SCHEISTSND              // 57
-    NAZIFIRESND             // 58
-    BOSSFIRESND             // 59
-    SSFIRESND               // 60
-    SLURPIESND              // 61
-    TOT_HUNDSND             // 62
-    MEINGOTTSND             // 63
-    SCHABBSHASND            // 64
-    HITLERHASND             // 65
-    SPIONSND                // 66
-    NEINSOVASSND            // 67
-    DOGATTACKSND            // 68
+    MUTTISND_               // 50
+    SCHUTZADSND_            // 51
+    AHHHGSND_               // 52
+    DIESND_                 // 53
+    EVASND_                 // 54
+    GUTENTAGSND_            // 55
+    LEBENSND_               // 56
+    SCHEISTSND_             // 57
+    NAZIFIRESND_            // 58
+    BOSSFIRESND_            // 59
+    SSFIRESND_              // 60
+    SLURPIESND_             // 61
+    TOT_HUNDSND_            // 62
+    MEINGOTTSND_            // 63
+    SCHABBSHASND_           // 64
+    HITLERHASND_            // 65
+    SPIONSND_               // 66
+    NEINSOVASSND_           // 67
+    DOGATTACKSND_           // 68
     FLAMETHROWERSND         // 69
-    MECHSTEPSND             // 70
+    MECHSTEPSND_            // 70
     GOOBSSND                // 71
-    YEAHSND                 // 72
-    DEATHSCREAM4SND         // 73
-    DEATHSCREAM5SND         // 74
-    DEATHSCREAM6SND         // 75
-    DEATHSCREAM7SND         // 76
-    DEATHSCREAM8SND         // 77
-    DEATHSCREAM9SND         // 78
-    DONNERSND               // 79
-    EINESND                 // 80
-    ERLAUBENSND             // 81
-    KEINSND                 // 82
-    MEINSND                 // 83
-    ROSESND                 // 84
+    YEAHSND_                // 72
+    DEATHSCREAM4SND_        // 73
+    DEATHSCREAM5SND_        // 74
+    DEATHSCREAM6SND_        // 75
+    DEATHSCREAM7SND_        // 76
+    DEATHSCREAM8SND_        // 77
+    DEATHSCREAM9SND_        // 78
+    DONNERSND_              // 79
+    EINESND_                // 80
+    ERLAUBENSND_            // 81
+    KEINSND_                // 82
+    MEINSND_                // 83
+    ROSESND_                // 84
     MISSILEFIRESND          // 85
     MISSILEHITSND           // 86
 
 def get_sound_data ( name:SoundName; max_seq:int=INT_MAX )
     var index = int(name)
     var data : array<float>
-    while index < length(Sounds)
-        let next = Sounds[index].data |> length
-        let cur = data |> length
-        data |> reserve ( data|>length + next )
-        for i in Sounds[index].data
+    if index >= 1000
+        index -= 1000
+        data |> reserve ( Audio[index].data |> length )
+        for i in Audio[index].data
             data |> push(float(i)/128.0-1.0)
-        if next != 4096
-            break
-        index ++
-    return <- data
-
-def get_audio_data ( name:AudioName )
-    var index = int(name)
-    var data : array<float>
-    data |> reserve ( Audio[index].data |> length )
-    for i in Audio[index].data
-        data |> push(float(i)/128.0-1.0)
+    else
+        while index < length(Sounds)
+            let next = Sounds[index].data |> length
+            let cur = data |> length
+            data |> reserve ( data|>length + next )
+            for i in Sounds[index].data
+                data |> push(float(i)/128.0-1.0)
+            if next != 4096
+                break
+            index ++
     return <- data
 
 def play_game_sound_2d ( name:SoundName; xy:float2; r:float; rate:int=SOUND_SAMPLE_RATE )
-    application->play_app_sound_2d(xy, r, get_sound_data(name), rate)
+    if name != SoundName NONE
+        application->play_app_sound_2d(xy, r, get_sound_data(name), rate)
 
 def play_game_sound ( name:SoundName; rate:int=SOUND_SAMPLE_RATE )
-    application->play_app_sound(get_sound_data(name), rate)
-
-def play_game_audio_2d ( name:AudioName; xy:float2; r:float; rate:int=SOUND_SAMPLE_RATE )
-    application->play_app_sound_2d(xy, r, get_audio_data(name), rate)
-
-def play_game_audio ( name:AudioName; rate:int=SOUND_SAMPLE_RATE )
-    application->play_app_sound(get_audio_data(name), rate)
+    if name != SoundName NONE
+        application->play_app_sound(get_sound_data(name), rate)
 
 // -------------------- entities --------------------
 
@@ -871,6 +865,7 @@ struct EnemyClass
     comfortDistance : float // how far away from player enemy stops chasing
     attackDelay : float2    // min, max
     attackSound : SoundName // sound played when enemy attacks
+    deathSound : SoundName  // sound played when enemy dies
     agroSound : SoundName   // sound played when enemy sees player
 
 let enemyClasses <- [[EnemyClass
@@ -885,6 +880,7 @@ let enemyClasses <- [[EnemyClass
     attackDelay = float2(1., 2.),
     attackSound = SoundName ATKPISTOLSND,
     agroSound = SoundName ACHTUNG,
+    deathSound = SoundName DEATHSCREAM9SND,
     spriteIndex = 50,
     runSprites <- [{auto 58; 66; 74}],
     deathSprites <- [{auto 90; 91; 92; 93; 95}],
@@ -901,6 +897,7 @@ let enemyClasses <- [[EnemyClass
     attackDelay = float2(0.2, 0.5),
     attackSound = SoundName DOGATTACKSND,
     agroSound = SoundName DOGBARK,
+    deathSound = SoundName DOGDEATHSND,
     spriteIndex = 99,
     runSprites <- [{auto 107; 115; 123}],
     deathSprites <- [{auto 131; 132; 133; 134}],
@@ -916,7 +913,8 @@ let enemyClasses <- [[EnemyClass
     attackFireRate = 2.5,
     attackDelay = float2(0.5, 1.),
     attackSound = SoundName ATKPISTOLSND,
-    agroSound = SoundName GUTENTAGSND,
+    agroSound = SoundName SPIONSND,
+    deathSound = SoundName NEINSOVASSND,
     spriteIndex = 238,
     runSprites <- [{auto 246; 254; 262}],
     deathSprites <- [{auto 279; 280; 281; 283; 284}],
@@ -933,6 +931,7 @@ let enemyClasses <- [[EnemyClass
     attackDelay = float2(0.8, 1.5),
     attackSound = SoundName SSFIRESND,
     agroSound = SoundName SCHUTZADSND,
+    deathSound = SoundName LEBENSND,
     spriteIndex = 138,
     runSprites <- [{auto 146; 154; 162}],
     deathSprites <- [{auto 179; 180; 181; 183}],
@@ -948,7 +947,8 @@ let enemyClasses <- [[EnemyClass
     attackFireRate = 2.5,
     attackDelay = float2(1., 2.),
     attackSound = SoundName ATKGATLINGSND,
-    agroSound = SoundName MUTTISND,
+    agroSound = SoundName NONE,
+    deathSound = SoundName AHHHGSND,
     spriteIndex = 187,
     runSprites <- [{auto 195; 203; 211}],
     deathSprites <- [{auto 228; 229; 230; 232; 233}],
@@ -965,6 +965,7 @@ let enemyClasses <- [[EnemyClass
     attackDelay = float2(2., 3.),
     attackSound = SoundName BOSSFIRESND,
     agroSound = SoundName GUTENTAGSND,
+    deathSound = SoundName MUTTISND,
     spriteIndex = 296,
     runSprites <- [{auto 296; 297; 298; 299}],
     deathSprites <- [{auto 304; 305; 306; 303}],
@@ -1026,16 +1027,11 @@ let random_take_damage_snd = [[SoundName
     SoundName DEATHSCREAM2SND;
     SoundName DEATHSCREAM3SND]]
 
-let random_death_snd = [[SoundName
-    SoundName DEATHSCREAM7SND;
-    SoundName DEATHSCREAM8SND;
-	SoundName DEATHSCREAM9SND]]
-
-let treasureAudio = [[AudioName
-    AudioName BONUS1SND;
-    AudioName BONUS2SND;
-    AudioName BONUS3SND;
-    AudioName BONUS3SND]]
+let treasureAudio = [[SoundName
+    SoundName BONUS1SND;
+    SoundName BONUS2SND;
+    SoundName BONUS3SND;
+    SoundName BONUS3SND]]
 
 var player = Player()
 
@@ -1114,7 +1110,7 @@ def die ( var self:Enemy )
         health = -100
         orientable = false
         self |> startAnimation(new Animation(enemyClasses[int(enemyCategory)].deathSprites))
-        play_game_sound_2d(random_death_snd[ random_int(seed) % 3], pos, PAIN_SOUND_RADIUS)
+        play_game_sound_2d(enemyClasses[int(enemyCategory)].deathSound, pos, PAIN_SOUND_RADIUS)
         if enemyCategory==EnemyCategory dog
             // self |> dropLoot(cx,cy,Collectible dogBone)
             pass
@@ -1415,31 +1411,31 @@ def collect ( var self:Player; XY:int2 )
                             health += 4
                             play_game_sound(SoundName FART)
                         elif col==Collectible Food
-                            play_game_audio(AudioName HEALTH1SND)
+                            play_game_sound(SoundName HEALTH1SND)
                             health += 10
                         elif col==Collectible Medkit
-                            play_game_audio(AudioName HEALTH2SND)
+                            play_game_sound(SoundName HEALTH2SND)
                             health += 24
                         health = min(health, 100)
                 elif col==Collectible LifeUp
                     health = 200
                     collected |> push(index)
-                    play_game_audio(AudioName BONUS1UPSND)
+                    play_game_sound(SoundName BONUS1UPSND)
                 elif isKey(m1)
                     if col==Collectible KeySilver
                         silverKey = true
                     elif col==Collectible KeyGold
                         goldKey = true
                     collected |> push(index)
-                    play_game_audio(AudioName GETKEYSND)
+                    play_game_sound(SoundName GETKEYSND)
                 elif col==Collectible AmmoClip
                     if ammo < 199
                         collected |> push(index)
                         ammo = min(199,ammo+8)
-                        play_game_audio(AudioName GETAMMOSND)
+                        play_game_sound(SoundName GETAMMOSND)
                 elif isTreasure(m1)
                     collected |> push(index)
-                    play_game_audio(treasureAudio[m1-52])
+                    play_game_sound(treasureAudio[m1-52])
                     flashScreen(float4(0.,0.,1.,1.),float4(255.,255.,0.,0.), 3. / 60.)
                 elif col == Collectible MachineGun || col == Collectible Chaingun
                     let wep = (col==Collectible MachineGun) ? WeaponType machineGun : WeaponType chainGun
@@ -1447,7 +1443,7 @@ def collect ( var self:Player; XY:int2 )
                         collected |> push(index)
                         ammo = min(199,ammo+25)
                         if !hasWeapon[int(wep)]
-                            play_game_audio((col==Collectible MachineGun) ? AudioName GETMACHINESND : AudioName GETGATLINGSND)
+                            play_game_sound((col==Collectible MachineGun) ? SoundName GETMACHINESND : SoundName GETGATLINGSND)
                             hasWeapon[int(wep)] = true
                             self |> switchWeapon(wep)
         collected |> sort
@@ -1532,7 +1528,7 @@ def shoot ( var self:Player )
             if weaponType!=WeaponType knife && ammo==0
                 return
             if weaponType == WeaponType knife
-                play_game_audio(AudioName ATKKNIFESND)
+                play_game_sound(SoundName ATKKNIFESND)
             else
                 ammo --
                 play_game_sound(weaponSounds[int(weaponType)])
@@ -1585,12 +1581,12 @@ def activate ( var self:Player )
             // door
             if (m0==92 || m0==93) && !goldKey
                 // gold-locked door
-                play_game_audio_2d(AudioName HALTSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS)
+                play_game_sound_2d(SoundName HALTSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS)
                 hudText("GOLD KEY REQUIRED!", 2.)
                 return
             if (m0==94 || m0==95) && !silverKey
                 // silver-locked door
-                play_game_audio_2d(AudioName HALTSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS)
+                play_game_sound_2d(SoundName HALTSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS)
                 hudText("SILVER KEY REQUIRED!", 2.)
                 return
             assume timer = timer_plane[X][Y]
@@ -1624,7 +1620,7 @@ def activate ( var self:Player )
                     t = 0.5,
                     active = true
                 ]]
-                play_game_audio_2d(AudioName DONOTHINGSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS)
+                play_game_sound_2d(SoundName DONOTHINGSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS)
 
 def clearKeys ( var self:Player )
     with self
@@ -1633,6 +1629,7 @@ def clearKeys ( var self:Player )
 
 def die ( var self:Player )
     self.health = 0
+    let random_death_snd <- [{auto SoundName DEATHSCREAM7SND; SoundName DEATHSCREAM8SND; SoundName DEATHSCREAM9SND}]
     play_game_sound(random_death_snd[ random_int(seed) % 3])
 
 def takeDamage ( var self:Player; DAMAGE:int )

@@ -39,6 +39,7 @@ class Application
     cheatGiveEverything : bool
     cheat1 : bool                   // spawn enemy?
     cheat2 : bool                   // spawn obstacle?
+    cheat3 : bool                   // teleport player to interesting place?
     cheatSwitchLevel : bool         // any switch to next level
     cheatSwitchLevelShift : bool    // switch to specific level (shift pressed?)
 
@@ -692,6 +693,18 @@ def getEntityDirection(dm:int; var dx,dy:float& )
     elif dm==3
         dx = 0.0;   dy = 1.0
 
+def isDoor(m0:int)
+    return m0>=90 && m0<=101
+
+def isGoldDoor(m0:int)
+    return (m0==92 || m0==93)
+
+def isSilverDoor(m0:int)
+    return (m0==94 || m0==95)
+
+def isRegularDoor(m0:int)
+    return (m0==90 || m0==91 || m0==96 || m0==97 || m0==98 || m0==99 || m0==100 || m0==101)
+
 def isPlayer(m1:int)
     return m1>=19 && m1<=22
 
@@ -789,7 +802,8 @@ let DEAD_BODY_REMOVE_DISTANCE = 10. // how far away from player dead bodies are 
 
 let SHOT_ALERT_RADIUS = 10. // how far away from player enemies are alerted by shots
 
-let AGRO_TIME = 20. // they stay agro even if they can't see you for that many seconds
+let DISABLE_AGRO = false    // if enemies should be agro at all
+let AGRO_TIME = 20.         // they stay agro even if they can't see you for that many seconds
 
 let LEVEL_FADE_TIME = 1.
 let LEVEL_FADE_FACTOR = 1.0 / LEVEL_FADE_TIME / 60.
@@ -799,10 +813,10 @@ let SHOT_SOUND_RADIUS = 64.
 let AGRO_SOUND_RADIUS = 64.
 
 let DOOR_SOUND_PLAYBACK_RATE = 18000
-let DOOR_SOUND_RADIUS = 64.      // how far away door sound can be heard (in tiles)
+let DOOR_SOUND_RADIUS = 20.      // how far away door sound can be heard (in tiles)
 let DOOR_OPEN_SPEED = 2.0        // how fast door opens (in tiles per second)
 let DOOR_CLOSE_SPPED = 2.0       // how fast door closes (in tiles per second)
-let DOOR_STAYS_CLOSED = 2.0      // how long door stays closed (in seconds)
+let DOOR_STAYS_CLOSED = 3.0      // how long door stays closed (in seconds)
 
 var playerHoodTime = 0.
 var playerHealth = 1.
@@ -871,12 +885,15 @@ struct EnemyClass
     attackSound : SoundName // sound played when enemy attacks
     deathSound : SoundName  // sound played when enemy dies
     agroSound : SoundName   // sound played when enemy sees player
+// everything ai
+    canOpenDoors : bool     // can enemy open doors
 
 let enemyClasses <- [[EnemyClass
 // guard
     hp = 25,
     radius = .25,
     speed = 0.065 * 0.35,
+    canOpenDoors = true,
     attackDamage = 15,
     comfortDistance = 3.,
     attackDistance = 5.,
@@ -894,6 +911,7 @@ let enemyClasses <- [[EnemyClass
     hp = 1,
     radius = .3,
     speed = 0.065 / 2.,
+    canOpenDoors = false,
     attackDamage = 10,
     attackDistance = 1.5,
     comfortDistance = 1.5,
@@ -911,6 +929,7 @@ let enemyClasses <- [[EnemyClass
     hp = 50,
     radius = .3,
     speed = 0.065 * 0.5,
+    canOpenDoors = true,
     attackDamage = 30,
     attackDistance = 7.,
     comfortDistance = 5.,
@@ -928,6 +947,7 @@ let enemyClasses <- [[EnemyClass
     hp = 50,
     radius = .3,
     speed = 0.065 * 0.5,
+    canOpenDoors = true,
     attackDamage = 45,
     attackDistance = 7.,
     comfortDistance = 3.,
@@ -945,6 +965,7 @@ let enemyClasses <- [[EnemyClass
     hp = 45,
     radius = .4,
     speed = 0.065 * 0.35,
+    canOpenDoors = true,
     attackDamage = 45,
     attackDistance = 3.,
     comfortDistance = 1.5,
@@ -962,6 +983,7 @@ let enemyClasses <- [[EnemyClass
     hp = 800,
     radius = .4,
     speed = 0.065 * 0.35,
+    canOpenDoors = true,
     attackDamage = 45,
     attackDistance = 10.,
     comfortDistance = 5.,
@@ -1052,6 +1074,8 @@ var timer_plane : Timer[64][64]
 
 var collision_plane : bool[64][64]
 
+var pathing_plane : bool[64][64]
+
 var visibility_plane : bool[64][64]
 
 var zIndex : array<float>
@@ -1097,7 +1121,8 @@ def startAnimation ( var entity:Entity; ANIMATION:Animation? )
 
 def takeDamage ( var self:Enemy; DAMAGE:int )
     with self
-        agroTimer = AGRO_TIME   // getting shot sets up agro timer
+        if !DISABLE_AGRO
+            agroTimer = AGRO_TIME   // getting shot sets up agro timer
         health -= DAMAGE
         if health <= 0
             category = Category deadBody
@@ -1522,6 +1547,8 @@ def update ( var self:Player )
             player |> shoot()
 
 def alert ( xy:float2; radius:float )
+    if DISABLE_AGRO
+        return
     for enemy in enemies
         if enemy.category == Category enemy
             if length(enemy.pos - xy) < radius
@@ -1566,6 +1593,17 @@ def isTooCloseToDoor ( var self:Player; XY:int2 )
             return true
         return false
 
+def openDoor ( X,Y:int )
+    assume timer = timer_plane[X][Y]
+    if !timer.active
+        timer = [[Timer
+            t = 0.,
+            opening = true,
+            active = true,
+            isDoor = true
+        ]]
+        play_game_sound_2d(SoundName OPENDOORSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS, DOOR_SOUND_PLAYBACK_RATE)
+
 def activate ( var self:Player )
     with self
         var X = floori(pos.x)
@@ -1582,27 +1620,19 @@ def activate ( var self:Player )
         if m0==21 && DX!=0
             // elevator
             switchLevel(levelIndex+1)
-        elif m0>=90 && m0<=101
+        elif isDoor(m0)
             // door
-            if (m0==92 || m0==93) && !goldKey
+            if isGoldDoor(m0) && !goldKey
                 // gold-locked door
                 play_game_sound_2d(SoundName HALTSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS)
                 hudText("GOLD KEY REQUIRED!", 2.)
                 return
-            if (m0==94 || m0==95) && !silverKey
+            if isSilverDoor(m0) && !silverKey
                 // silver-locked door
                 play_game_sound_2d(SoundName HALTSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS)
                 hudText("SILVER KEY REQUIRED!", 2.)
                 return
-            assume timer = timer_plane[X][Y]
-            if !timer.active
-                timer = [[Timer
-                    t = 0.,
-                    opening = true,
-                    active = true,
-                    isDoor = true
-                ]]
-                play_game_sound_2d(SoundName OPENDOORSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS, DOOR_SOUND_PLAYBACK_RATE)
+            openDoor(X,Y)
         elif m1 == 98
             // pushwall
             assume timer = timer_plane[X][Y]
@@ -1855,6 +1885,11 @@ def canMoveTo ( self:Enemy; XY:float2 )
         if (dplayer < (radius + player.radius))
             // can't move into player slot, period
             return false
+        // can't move into other enemies
+        var ipos = floori(XY)
+        if floori(pos) != ipos
+            if pathing_plane[ipos.x][ipos.y]
+                return false
         return canMoveTo(XY,radius)
 
 def move ( var self:Enemy; length,sideways:float )
@@ -1884,13 +1919,45 @@ def getSecondaryDirection(dir:float2) : int2
     else
         return dir.x > 0. ? int2(1,0) : int2(-1,0)
 
+def getPathDir ( ipos:int2 ) : float2
+    let ICONARROWS = 90
+    let spot = level.plane1[ipos.x][ipos.y] - ICONARROWS
+    if spot==0                  // east
+        return float2( 1, 0)
+    elif spot==1                // north-east
+        return float2( 1,-1)
+    elif spot==2                // north
+        return float2( 0,-1)
+    elif spot==3               // north-west
+        return float2(-1,-1)
+    elif spot==4               // wet
+        return float2(-1, 0)
+    elif spot==5               // south-west
+        return float2(-1, 1)
+    elif spot==6               // south
+        return float2( 0, 1)
+    elif spot==7               // south-east
+        return float2( 1, 1)
+    else
+        return float2( 0, 0)
+
+def keepDoorsOpen ( var self:Enemy; irun:int2 )
+    with self
+        if !isDoor(level.plane0[irun.x][irun.y])
+            return
+        if !enemyClasses[int(enemyCategory)].canOpenDoors
+            return
+        let m0 = level.plane0[irun.x][irun.y]
+        if isRegularDoor(m0)
+            openDoor(irun.x,irun.y)
+
 def update ( var self:Enemy )
     with self
         attackTimer = max ( attackTimer - 1. / 60. * frame_time, 0. )
         agroTimer = max ( agroTimer - 1. / 60. * frame_time, 0. )
         // agro resets if we see the player regardless of what we are doing
         let ipos = floori(pos)
-        if visibility_plane[ipos.x][ipos.y]   // player sees us, so we may (or may not) be able to see them
+        if !DISABLE_AGRO && visibility_plane[ipos.x][ipos.y]   // player sees us, so we may (or may not) be able to see them
             var dxy = normalize(player.pos - pos)
             var angle = dot(dxy,dir)
             if !orientable || angle>=0.1
@@ -1906,12 +1973,13 @@ def update ( var self:Enemy )
                 if dist>0. && dist<=attackDistance
                     self |> attack()
                     return
-            if agroTimer!=0. && player.health>0 && visibility_plane[ipos.x][ipos.y]
+            if agroTimer!=0. && player.health>0 //  && visibility_plane[ipos.x][ipos.y]
                 // we rotate towards player
                 let dist = length(player.pos - pos)
                 let comfortDistance = enemyClasses[int(enemyCategory)].comfortDistance
-                if dist > comfortDistance
-                    // if we too far, we run
+                if dist > comfortDistance || !visibility_plane[ipos.x][ipos.y]
+                    // if we too far, or we don't see player - we run and try keeping doors open
+                    self |> keepDoorsOpen(floori(float2(floori(pos)) + float2(0.5) + normalize(player.pos - pos)))
                     running = true
                 else
                     // if we comfortable, we do nada
@@ -1919,10 +1987,27 @@ def update ( var self:Enemy )
                     animation = null
                     running = false
             if agroTimer==0.
-                // if we are not agroed, we just stand
-                spriteIndex = enemyClasses[int(enemyCategory)].spriteIndex
-                animation = null
-                running = false
+                if patrolling
+                    // if we are patrolling, we check direciton
+                    if !running || run.xy == float2(0.)
+                        let pdir = getPathDir(floori(pos))
+                        if pdir!=float2(0,0)
+                            dir = pdir
+                        run = float2(floori(pos)) + float2(0.5) + dir
+                        let irun = floori(run)
+                        self |> keepDoorsOpen(floori(run))
+                        if pathing_plane[irun.x][irun.y]
+                            // if we can't go there (blocked), we just stand and wait
+                            spriteIndex = enemyClasses[int(enemyCategory)].spriteIndex
+                            animation = null
+                            running = false
+                        else
+                            running = true
+                else
+                    // if we are not agroed and not patrolling, we just stand
+                    spriteIndex = enemyClasses[int(enemyCategory)].spriteIndex
+                    animation = null
+                    running = false
         if running
             if animation == null
                 self |> startAnimation(new Animation(enemyClasses[int(enemyCategory)].runSprites,true,orientable))
@@ -1974,6 +2059,17 @@ def run ( var self:Enemy )
         return false
 
 def updateEnemies
+    // fill pathing
+    for y in range(64)
+        for x in range(64)
+            if isDoor(level.plane0[x][y])
+                pathing_plane[x][y] = collision_plane[x][y]
+            else
+                pathing_plane[x][y] = false
+    for enemi in enemies
+        let ipos = floori(enemi.pos)
+        pathing_plane[ipos.x][ipos.y] = true
+    // update enemies
     for enemy in enemies
         // very basic AI
         if enemy.category == Category enemy
@@ -2023,17 +2119,14 @@ def updateTimers
                         if !collision_plane[X][Y]
                             var enemyTooCloseToDoor = false
                             for enemy in enemies
-                                if enemy.category == Category enemy
-                                    let edist = abs(floori(enemy.pos)-XY)
-                                    if edist.x<=1 && edist.y<=1
-                                        enemyTooCloseToDoor = true
-                                        break
+                                if floori(enemy.pos)==XY
+                                    enemyTooCloseToDoor = true
+                                    break
                             if enemyTooCloseToDoor || player|>isTooCloseToDoor(XY)
                                 timer.t = DOOR_STAYS_CLOSED
                             else
                                 collision_plane[X][Y] = true
                                 play_game_sound_2d(SoundName CLOSEDOORSND, float2(XY)+float2(0.5), DOOR_SOUND_RADIUS, DOOR_SOUND_PLAYBACK_RATE)
-                                // TODO: remove dead body from doorway
                     if timer.t <= 0.
                         timer.t = 0.
                         timer.active = false
@@ -2106,6 +2199,9 @@ def updatePlayer
             spriteIndex = int(Props Tree) - 21
         ]]
         collision_plane[X][Y] = true
+    if application.cheat3
+        player.pos = float2(3.5,40.5)
+        player.dir = float2(0,1)
     if application.cheatSwitchLevel
         if application.cheatSwitchLevelShift
             if levelIndex<8

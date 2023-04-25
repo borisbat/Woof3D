@@ -114,6 +114,8 @@ class OpenglApplication : woof3d::Application
         playing_sounds[i].busy = true
         playing_sounds[i].is3d = false
     def override play_app_sound_2d ( pos:float2; radius:float; wave:array<float>; freq:int )
+        if length(pos - sound_head_position) > radius
+            return
         let i = allocate_app_sound()
         if i<0
             return
@@ -123,6 +125,7 @@ class OpenglApplication : woof3d::Application
         playing_sounds[i].is3d = true
         playing_sounds[i].xy = pos
         playing_sounds[i].radius = radius
+        update_3d_sound(playing_sounds[i])
     def override set_app_sound_position ( xy:float2; dxy:float2 )
         sound_head_position = xy
         sound_head_direction = dxy
@@ -135,6 +138,16 @@ class OpenglApplication : woof3d::Application
                 snd.busy = true
                 return i
         return -1
+    def update_3d_sound ( var snd:PlayingSound)
+        var rxy = snd.xy - sound_head_position
+        rxy = float2(rxy.x * sound_head_direction.x + rxy.y * sound_head_direction.y,
+                    -rxy.x * sound_head_direction.y + rxy.y * sound_head_direction.x)
+        // linear volume attenuation???
+        let attn = max(0.0f, 1.0f - length(rxy) / snd.radius)
+        set_sound_volume(snd.handle, attn)
+        // panning
+        let nrxy = normalize(rxy)
+        set_sound_pan(snd.handle, -nrxy.y )
     def update_sounds
         for snd in playing_sounds
             if snd.busy
@@ -143,15 +156,7 @@ class OpenglApplication : woof3d::Application
                     snd.busy = false
                     continue
             if snd.is3d
-                var rxy = snd.xy - sound_head_position
-                rxy = float2(rxy.x * sound_head_direction.x + rxy.y * sound_head_direction.y,
-                            -rxy.x * sound_head_direction.y + rxy.y * sound_head_direction.x)
-                // linear volume attenuation???
-                let attn = max(0.0f, 1.0f - length(rxy) / snd.radius)
-                set_sound_volume(snd.handle, attn)
-                // panning
-                let nrxy = normalize(rxy)
-                set_sound_pan(snd.handle, -nrxy.y )
+                update_3d_sound
     def update_controls
         // update cursor
         var cxy = glfwGetCursorPos(window)
@@ -181,6 +186,7 @@ class OpenglApplication : woof3d::Application
         cheatGiveEverything = glfwGetKey(window, GLFW_KEY_F1)==GLFW_PRESS
         cheat1 = glfwGetKey(window, GLFW_KEY_F8)==GLFW_PRESS
         cheat2 = glfwGetKey(window, GLFW_KEY_F9)==GLFW_PRESS
+        cheat3 = glfwGetKey(window, GLFW_KEY_F2)==GLFW_PRESS
         cheatSwitchLevel = glfwGetKey(window, GLFW_KEY_F10)==GLFW_PRESS
         cheatSwitchLevelShift = glfwGetKey(window, GLFW_KEY_LEFT_SHIFT)==GLFW_PRESS || glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT)==GLFW_PRESS
 

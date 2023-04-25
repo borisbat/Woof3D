@@ -2067,8 +2067,9 @@ def updateEnemies
             else
                 pathing_plane[x][y] = false
     for enemi in enemies
-        let ipos = floori(enemi.pos)
-        pathing_plane[ipos.x][ipos.y] = true
+        if enemi.category == Category enemy
+            let ipos = floori(enemi.pos)
+            pathing_plane[ipos.x][ipos.y] = true
     // update enemies
     for enemy in enemies
         // very basic AI

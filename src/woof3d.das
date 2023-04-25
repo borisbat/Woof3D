@@ -15,6 +15,8 @@ let WL6_FILES_ROOT = "../data"
 
 var ENABLE_CHEAT_CODEDS = true
 
+let MOUSE_SENSETIVITY = 0.2
+
 // -------------------- application --------------------
 
 class Application
@@ -31,6 +33,8 @@ class Application
     backwardButton : bool
     strafeLeftButton : bool
     strafeRightButton : bool
+    // mouse
+    mouseDelta : float2
     // cheat codes
     cheatGiveEverything : bool
     cheat1 : bool                   // spawn enemy?
@@ -1477,6 +1481,7 @@ def update ( var self:Player )
             turnAngle += 1.
         if application.leftButton
             turnAngle -= 1.
+        turnAngle += application.mouseDelta.x * MOUSE_SENSETIVITY
         if turnAngle != 0.
             self |> turn(turnAngle * speed_a * frame_time)
             turnAngle = 0.

@@ -11,6 +11,7 @@ require daslib/safe_addr
 require math
 require strings
 require sound
+require rtti
 
 var [[in, location=0]] v_position : float2
 var [[in, location=2]] v_texcoord : float2
@@ -96,6 +97,10 @@ struct PlayingSound
     xy   : float2
     radius : float
 
+var cursor_position_xy : float2
+var cursor_delta_xy : float2
+var mouse_buttons : int
+
 class OpenglApplication : woof3d::Application
     playing_sounds : PlayingSound[MAX_SOUNDS]
     sound_head_position : float2
@@ -148,19 +153,30 @@ class OpenglApplication : woof3d::Application
                 let nrxy = normalize(rxy)
                 set_sound_pan(snd.handle, -nrxy.y )
     def update_controls
+        // update cursor
+        var cxy = glfwGetCursorPos(window)
+        cursor_delta_xy = cxy - cursor_position_xy
+        cursor_position_xy = float2(bb_width/2,bb_height/2)
+        glfwSetCursorPos(window, double(cursor_position_xy.x), double(cursor_position_xy.y))
         // controls
-        shootButton = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL)==GLFW_PRESS || glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL)==GLFW_PRESS
-        activateButton = glfwGetKey(window, GLFW_KEY_SPACE)==GLFW_PRESS || glfwGetKey(window, GLFW_KEY_ENTER)==GLFW_PRESS
+        shootButton = (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL)==GLFW_PRESS
+            || glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL)==GLFW_PRESS
+            || glfwGetMouseButton(window,GLFW_MOUSE_BUTTON_1)==GLFW_PRESS)
+        activateButton = (glfwGetKey(window, GLFW_KEY_SPACE)==GLFW_PRESS
+            || glfwGetKey(window, GLFW_KEY_ENTER)==GLFW_PRESS
+            || glfwGetMouseButton(window,GLFW_MOUSE_BUTTON_2)==GLFW_PRESS)
         weapon1Button = glfwGetKey(window, GLFW_KEY_1)==GLFW_PRESS
         weapon2Button = glfwGetKey(window, GLFW_KEY_2)==GLFW_PRESS
         weapon3Button = glfwGetKey(window, GLFW_KEY_3)==GLFW_PRESS
         weapon4Button = glfwGetKey(window, GLFW_KEY_4)==GLFW_PRESS
         leftButton = glfwGetKey(window, GLFW_KEY_LEFT)==GLFW_PRESS
         rightButton = glfwGetKey(window, GLFW_KEY_RIGHT)==GLFW_PRESS
-        forwardButton = glfwGetKey(window, GLFW_KEY_UP)==GLFW_PRESS
-        backwardButton = glfwGetKey(window, GLFW_KEY_DOWN)==GLFW_PRESS
+        forwardButton = glfwGetKey(window, GLFW_KEY_UP)==GLFW_PRESS || glfwGetKey(window, GLFW_KEY_W)==GLFW_PRESS
+        backwardButton = glfwGetKey(window, GLFW_KEY_DOWN)==GLFW_PRESS || glfwGetKey(window, GLFW_KEY_S)==GLFW_PRESS
         strafeLeftButton = glfwGetKey(window, GLFW_KEY_A)==GLFW_PRESS
         strafeRightButton = glfwGetKey(window, GLFW_KEY_D)==GLFW_PRESS
+        // mouse
+        mouseDelta = cursor_delta_xy
         // cheat codes
         cheatGiveEverything = glfwGetKey(window, GLFW_KEY_F1)==GLFW_PRESS
         cheat1 = glfwGetKey(window, GLFW_KEY_F8)==GLFW_PRESS
@@ -190,6 +206,7 @@ def main
     defer <|
         sound_finalize()
     glfwInitOpenGL(3,3)
+    this_context().category |= context_category_flags opengl
     window = glfwCreateWindow(1920, 1080, "RASTER2D", null, null)
     if window==null
 		panic("can't create window")
@@ -199,6 +216,9 @@ def main
     var display_w, display_h : int
     glfwGetFramebufferSize(window, display_w, display_h)
     create_gl_objects(display_w, display_h)
+    glfwSetInputMode(window, int(GLFW_CURSOR), int(GLFW_CURSOR_HIDDEN))
+    glfwSetInputMode(window, int(GLFW_RAW_MOUSE_MOTION), int(GLFW_TRUE))
+    cursor_position_xy = glfwGetCursorPos(window)
     var tframe = ref_time_ticks()
     var prev_sec = glfwGetTime()
     var msecs = 12.

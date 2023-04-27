@@ -819,6 +819,7 @@ let DOOR_CLOSE_SPPED = 2.0       // how fast door closes (in tiles per second)
 let DOOR_STAYS_CLOSED = 3.0      // how long door stays closed (in seconds)
 
 var playerHoodTime = 0.
+var playerHeartbeatTime = 0.
 var playerHealth = 1.
 
 var hudMessage = ""
@@ -881,7 +882,8 @@ struct EnemyClass
     attackFireRate : float  // how fast it attacks
     attackDistance : float  // how far away from player enemy can attack
     comfortDistance : float // how far away from player enemy stops chasing
-    attackDelay : float2    // min, max
+    attackDelay : float2    // min, max - between attacks
+    attackReaction : float2 // min, max - before 1st attack
     attackSound : SoundName // sound played when enemy attacks
     deathSound : SoundName  // sound played when enemy dies
     agroSound : SoundName   // sound played when enemy sees player
@@ -898,6 +900,7 @@ let enemyClasses <- [[EnemyClass
     comfortDistance = 3.,
     attackDistance = 5.,
     attackFireRate = 2.5,
+    attackReaction = float2(0.5, 1.),
     attackDelay = float2(1., 2.),
     attackSound = SoundName ATKPISTOLSND,
     agroSound = SoundName ACHTUNG,
@@ -906,7 +909,7 @@ let enemyClasses <- [[EnemyClass
     runSprites <- [{auto 58; 66; 74}],
     deathSprites <- [{auto 90; 91; 92; 93; 95}],
     damageSprites <- [{auto 90; 94; 50}],
-    attackSprites <- [{auto 96; 97; 98; 97; 50}];
+    attackSprites <- [{auto 96; 97; -98; 97; 50}];
 // dog
     hp = 1,
     radius = .3,
@@ -916,6 +919,7 @@ let enemyClasses <- [[EnemyClass
     attackDistance = 1.5,
     comfortDistance = 1.5,
     attackFireRate = 3.5,
+    attackReaction = float2(0., 5.),
     attackDelay = float2(0.2, 0.5),
     attackSound = SoundName DOGATTACKSND,
     agroSound = SoundName DOGBARK,
@@ -924,7 +928,7 @@ let enemyClasses <- [[EnemyClass
     runSprites <- [{auto 107; 115; 123}],
     deathSprites <- [{auto 131; 132; 133; 134}],
     damageSprites <- [{auto 131; 99}],
-    attackSprites <- [{auto 135; 136; 137; 136; 99}];
+    attackSprites <- [{auto 135; 136; -137; 136; 99}];
 // officer
     hp = 50,
     radius = .3,
@@ -934,6 +938,7 @@ let enemyClasses <- [[EnemyClass
     attackDistance = 7.,
     comfortDistance = 5.,
     attackFireRate = 2.5,
+    attackReaction = float2(0.3, 8.),
     attackDelay = float2(0.5, 1.),
     attackSound = SoundName ATKPISTOLSND,
     agroSound = SoundName SPIONSND,
@@ -942,7 +947,7 @@ let enemyClasses <- [[EnemyClass
     runSprites <- [{auto 246; 254; 262}],
     deathSprites <- [{auto 279; 280; 281; 283; 284}],
     damageSprites <- [{auto 279; 282; 238}],
-    attackSprites <- [{auto 285; 286; 287; 286; 238}];
+    attackSprites <- [{auto 285; 286; -287; 286; 238}];
 // ss
     hp = 50,
     radius = .3,
@@ -952,6 +957,7 @@ let enemyClasses <- [[EnemyClass
     attackDistance = 7.,
     comfortDistance = 3.,
     attackFireRate = 2.5,
+    attackReaction = float2(0.5, 1.),
     attackDelay = float2(0.8, 1.5),
     attackSound = SoundName SSFIRESND,
     agroSound = SoundName SCHUTZADSND,
@@ -960,7 +966,7 @@ let enemyClasses <- [[EnemyClass
     runSprites <- [{auto 146; 154; 162}],
     deathSprites <- [{auto 179; 180; 181; 183}],
     damageSprites <- [{auto 179; 182; 138}],
-    attackSprites <- [{auto 184; 185; 186; 186; 138}];
+    attackSprites <- [{auto 184; 185; -186; 185; 138}];
 // mutant
     hp = 45,
     radius = .4,
@@ -970,6 +976,7 @@ let enemyClasses <- [[EnemyClass
     attackDistance = 3.,
     comfortDistance = 1.5,
     attackFireRate = 2.5,
+    attackReaction = float2(0.5, 1.),
     attackDelay = float2(1., 2.),
     attackSound = SoundName ATKGATLINGSND,
     agroSound = SoundName NONE,
@@ -978,7 +985,7 @@ let enemyClasses <- [[EnemyClass
     runSprites <- [{auto 195; 203; 211}],
     deathSprites <- [{auto 228; 229; 230; 232; 233}],
     damageSprites <- [{auto 228; 231; 187}],
-    attackSprites <- [{auto 234; 235; 236; 237; 236; 187}];
+    attackSprites <- [{auto 234; -235; 236; -237; 236; 187}];
 // hansGrosse
     hp = 800,
     radius = .4,
@@ -988,6 +995,7 @@ let enemyClasses <- [[EnemyClass
     attackDistance = 10.,
     comfortDistance = 5.,
     attackFireRate = 2.5,
+    attackReaction = float2(1., 2.),
     attackDelay = float2(2., 3.),
     attackSound = SoundName BOSSFIRESND,
     agroSound = SoundName GUTENTAGSND,
@@ -996,7 +1004,7 @@ let enemyClasses <- [[EnemyClass
     runSprites <- [{auto 296; 297; 298; 299}],
     deathSprites <- [{auto 304; 305; 306; 303}],
     // damageSprites <- [{auto 228; 231; 187}],
-    attackSprites <- [{auto 300; 301; 302}]
+    attackSprites <- [{auto 300; 300; 300; -301; -302; -301; -302; 300}]
 ]]
 
 struct Enemy : Entity
@@ -1117,7 +1125,7 @@ def Animation ( SPRITES:array<int>; LOOP:bool=false; ORIENTABLE:bool=false; RATE
 
 def startAnimation ( var entity:Entity; ANIMATION:Animation? )
     entity.animation = ANIMATION
-    entity.spriteIndex = entity.animation.sprites[0]
+    entity.spriteIndex = abs(entity.animation.sprites[0])
 
 def takeDamage ( var self:Enemy; DAMAGE:int )
     with self
@@ -1688,6 +1696,12 @@ def flashScreen ( ff,fb:float4; ft:float )
     flashBase = fb
     flashTime = ft
 
+def heartbeat(x:float)
+    let p_x = PI * x
+    let s1 = pow(sin(p_x),100.)
+    let s2 = sin(4.*p_x)
+    return clamp ( s1*0.9 + s2*0.1 + 0.1, 0., 1.)
+
 def updatePalette
     // udpate flash
     if flashTime > 0.
@@ -1717,14 +1731,21 @@ def updatePalette
             dLevelFade = LEVEL_FADE_FACTOR
     elif player.health <= 25 || flashTime > 0.
         // health fading to red + flash
-        var factor = max(0., 1. - float(player.health) / 25.)
-        factor = sqrt(factor)
-        let ifactor = 1. - factor
+        playerHeartbeatTime += 1./60. * frame_time
+        if playerHeartbeatTime > 2.
+            playerHeartbeatTime -= 2.
+        var ifactor = 1.
+        if player.health <= 0
+            ifactor = 0.
+        elif player.health <= 25
+            let hb = heartbeat(playerHeartbeatTime*0.5)
+            var factor = max(0., 1. - float(player.health) / 25. )
+            ifactor = lerp(1., hb, factor)
         var pal : uint[256]
         for p,d in GamePalette,pal
             let fc = unpack_byte_to_float(p) * flashFactor + flashBase
             let tc = float4(255.,fc.y*ifactor,fc.z*ifactor,fc.w)
-            let rc = lerp(fc, tc, float4(factor))
+            let rc = lerp(fc, tc, float4(1.-ifactor))
             d = pack_float_to_byte ( clamp(rc, float4(0.), float4(255.)) )
         application->set_palette(pal)
     else
@@ -1854,13 +1875,15 @@ def rotateTowardsPlayer ( var self:Enemy )
 
 def shoot ( var self:Enemy )
     with self
+        assume eclass = enemyClasses[int(enemyCategory)]
+        play_game_sound_2d(eclass.attackSound, pos, PAIN_SOUND_RADIUS)
         var dxy = player.pos - pos
         let dist = length(dxy)
         dxy /= dist
         let tres = trace(pos.x,pos.y,dxy.x,dxy.y,dist,false)
         if tres.t >= dist
-            let attackDamage = enemyClasses[int(enemyCategory)].attackDamage
-            let attackDistance = enemyClasses[int(enemyCategory)].attackDistance
+            let attackDamage = eclass.attackDamage
+            let attackDistance = eclass.attackDistance
             let distanceFactor = clamp(1. -  dist / attackDistance, 0., 1.)
             let randomFactor = random_float(seed) * 0.3 // todo: tune?
             let damage = float(attackDamage) * (distanceFactor + randomFactor)
@@ -1875,9 +1898,7 @@ def attack ( var self:Enemy )
         running = false
         let fireRate = eclass.attackFireRate / 16.
         self |> startAnimation(new Animation(eclass.attackSprites,false,false,fireRate))
-        play_game_sound_2d(eclass.attackSound, pos, PAIN_SOUND_RADIUS)
         rotateTowardsPlayer(self)
-        self |> shoot()
 
 def canMoveTo ( self:Enemy; XY:float2 )
     with self
@@ -1962,6 +1983,8 @@ def update ( var self:Enemy )
             var angle = dot(dxy,dir)
             if !orientable || angle>=0.1
                 if agroTimer == 0.
+                    let delay = enemyClasses[int(enemyCategory)].attackReaction
+                    attackTimer = random_float(seed) * (delay.y-delay.x) + delay.x
                     let agroSound = enemyClasses[int(enemyCategory)].agroSound
                     play_game_sound_2d(agroSound, pos, AGRO_SOUND_RADIUS)
                 agroTimer = AGRO_TIME
@@ -2086,12 +2109,17 @@ def updateEnemies
                         enemy.animation.spriteIndex = 0
                     else
                         // animation ended (delete?)
-                        enemy.spriteIndex = enemy.animation.sprites |> back
+                        enemy.spriteIndex = abs(enemy.animation.sprites |> back)
                         enemy.animation = null
                         return
                 else
                     enemy.animation.spriteIndex += 1
-                enemy.spriteIndex = enemy.animation.sprites[enemy.animation.spriteIndex]
+                let nextSprite = enemy.animation.sprites[enemy.animation.spriteIndex]
+                let nextSpriteIndex = abs(nextSprite)
+                if nextSpriteIndex != enemy.spriteIndex
+                    enemy.spriteIndex = nextSpriteIndex
+                    if nextSprite < 0
+                        *enemy |> shoot()
 
 def updateTimers
     for Y in range(64)
@@ -2504,7 +2532,7 @@ def woof3d_main ( app:Application? )
     setupLevel(0)
     levelFade = 0.
     dLevelFade = LEVEL_FADE_FACTOR
-    play_game_sound(SoundName FART)
+    play_game_sound(SoundName SLURPIESND)
 
 def woof3d_update ( dt:float; var backbuffer:Bitmap8# )
     updateGame(dt)

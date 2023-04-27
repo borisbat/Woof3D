@@ -13,6 +13,19 @@ How to integrate:
 main.das has example of the standalone OpenGL\GLFW\dasSound integration.
 extract.das can extract resources which we can get from .WL6 files.
 
+note: we render column-major, not your typical row-major. host application should rotate the texture.
+
+TODO: in no particular order
+
+1. additional health items - things like blood puddles, etc. stop going over 100hp
+2. life system - and points for treasures. when run out of extra life - restart
+3. redo death screen - so that we can display some text
+4. projectiles (and the rest of the bosses, only hans gesse works so far)
+5. something new to the game - current idea is to implement particles for blood, bullet shots
+6. sounds for hitting surfaces
+7. chaingun to take 2 ammo at the time. figure out max ammo
+
+
 
 
 

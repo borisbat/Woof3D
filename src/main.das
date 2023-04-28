@@ -183,6 +183,7 @@ class OpenglApplication : woof3d::Application
         backwardButton = glfwGetKey(window, GLFW_KEY_DOWN)==GLFW_PRESS || glfwGetKey(window, GLFW_KEY_S)==GLFW_PRESS
         strafeLeftButton = glfwGetKey(window, GLFW_KEY_A)==GLFW_PRESS
         strafeRightButton = glfwGetKey(window, GLFW_KEY_D)==GLFW_PRESS
+        mapButton = glfwGetKey(window, GLFW_KEY_TAB)==GLFW_PRESS
         // mouse
         mouseDelta = cursor_delta_xy
         // cheat codes
@@ -282,5 +283,3 @@ def main
         // swap buffersa
         glfwMakeContextCurrent(window)
         glfwSwapBuffers(window)
-
-

@@ -13,7 +13,9 @@ require daslib/raster_boost
 
 let WL6_FILES_ROOT = "../data"
 
-var ENABLE_CHEAT_CODEDS = true
+let ENABLE_CHEAT_CODEDS = true
+let ENABLE_HINT_SECRET_WALLS = true
+let ENABLE_MAP = true
 
 let MOUSE_SENSETIVITY = 0.2
 
@@ -33,6 +35,7 @@ class Application
     backwardButton : bool
     strafeLeftButton : bool
     strafeRightButton : bool
+    mapButton : bool
     // mouse
     mouseDelta : float2
     // cheat codes
@@ -1559,6 +1562,12 @@ def collect ( var self:Player; XY:int2 )
         reverse(collected)
         for i in collected
             objects |> erase(i)
+        if ENABLE_HINT_SECRET_WALLS
+            for x in range(-1,2)
+                for y in range(-1,2)
+                    if !(x==0 && y==0) && isPushWall(level.plane1[x+XY.x][y+XY.y]) && collision_plane[x+XY.x][y+XY.y]
+                        play_game_sound(SoundName HEALTH2SND)
+
 
 def turn ( var self:Player; alpha:float )
     with self
@@ -2327,7 +2336,7 @@ def updateHud
         hudMessage = ""
 
 def updateGame(dt:float)
-    frame_time = dt / 16.0
+    frame_time = min( dt / 16.0, 4.0 )  // at very low fps (spf?) things 'teleport'
     updatePalette()
     if dLevelFade != 0.
         return
@@ -2338,11 +2347,8 @@ def updateGame(dt:float)
 
 // -------------------- rasterization --------------------
 
-let DRAW_PLAYER_POSITION = false
-
-let DRAW_VISIBILITY = false
-
-let DRAW_COLLISION = false
+let DEBUG_PLAYER_POSITION = false
+let DEBUG_VISIBILITY = false
 
 def drawWalls ( level:Level; var bmp:Bitmap8# )
     for i in range(bmp.size.x)
@@ -2566,7 +2572,6 @@ def drawFontText(x,y:int; text:string; var bmp:Bitmap8#; var font:Font )
         drawHUDElement(X,y,W,font.height,*font.letters[chu],bmp,true)
         X += W
 
-[sideeffects]
 def setFontColor ( col:uint8; var font:Font )
     for Ch in range(256)
         var pic = font.letters[Ch]
@@ -2599,23 +2604,24 @@ def drawHUD ( var bmp:Bitmap8# )
         let dim = getFontTextDim(hudMessage,Fonts[0])
         drawFontText(160-dim.width/2,2,hudMessage,bmp,Fonts[0])
 
-def drawVisibility ( var bmp:Bitmap8# )
+def drawDebugVisibility ( var bmp:Bitmap8# )
     for x in range(64)
         for y in range(64)
             var col = visibility_plane[x][y] ? 0u8 : 255u8
-            rast_fillRect(bmp,bmp.size.y - 64*4 - 10 + x*4,10 + y*4,4,4,col)
+            rast_fillRect(bmp,bmp.size.x/2 - 32*4 - 10 + x*4,10 + y*4,4,4,col)
     for e in enemies
         if e.category == Category enemy
-            rast_fillRect(bmp,bmp.size.y - 64*4 - 10 + floori(e.pos.x)*4,10 + floori(e.pos.y)*4,4,4,32u8)
+            rast_fillRect(bmp,bmp.size.x/2 - 32*4 - 10 + floori(e.pos.x)*4,10 + floori(e.pos.y)*4,4,4,32u8)
 
-def drawCollision ( var bmp:Bitmap8# )
+def drawMap ( var bmp:Bitmap8# )
     for x in range(64)
         for y in range(64)
-            var col = collision_plane[x][y] ? 0u8 : 255u8
-            rast_fillRect(bmp, bmp.size.y - 64*4 - 10 + x*4,10 + y*4,4,4,col)
+            var col = collision_plane[x][y] ? 0u8 : 225u8
+            rast_fillRect(bmp, bmp.size.x/2 - 32*4 - 10 + x*4,10 + y*4,4,4,col)
     for e in enemies
         if e.category == Category enemy
-            rast_fillRect(bmp, bmp.size.y - 64*4 - 10 + floori(e.pos.x)*4,10 + floori(e.pos.y)*4,4,4,32u8)
+            rast_fillRect(bmp, bmp.size.x/2 - 32*4 - 10 + floori(e.pos.x)*4,10 + floori(e.pos.y)*4,4,4,32u8)
+    rast_fillRect(bmp, bmp.size.x/2 - 32*4 - 10 + floori(player.pos.x)*4,10 + floori(player.pos.y)*4,4,4,15u8)
 
 def draw ( level:Level; var bmp:Bitmap8# )
     hudFactor = max(float(bmp.size.y)/200.,1.)
@@ -2637,11 +2643,11 @@ def draw ( level:Level; var bmp:Bitmap8# )
         let text = player.lives!=0 ? "{player.lives} LIVES LEFT" : "YOU DIED"
         let dim = getHUDTextDim(text)
         drawHUDText(160-dim.width/2,100-dim.height/20-8,text,bmp)
-    if DRAW_VISIBILITY
-        drawVisibility(bmp)
-    if DRAW_COLLISION
-        drawCollision(bmp)
-    if DRAW_PLAYER_POSITION
+    if DEBUG_VISIBILITY
+        drawDebugVisibility(bmp)
+    if ENABLE_MAP && application.mapButton
+        drawMap(bmp)
+    if DEBUG_PLAYER_POSITION
         let text = "{floori(player.pos.x)} {floori(player.pos.y)}"
         let dim = getFontTextDim(text,Fonts[0])
         drawFontText(160-dim.width/2,200-16,text,bmp,Fonts[0])
@@ -2661,3 +2667,4 @@ def woof3d_update ( dt:float; var backbuffer:Bitmap8# )
     updateGame(dt)
     draw(level, backbuffer)
     application->set_app_sound_position(player.pos, player.dir)
+

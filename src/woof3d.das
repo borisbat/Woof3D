@@ -643,6 +643,8 @@ enum Collectible
     TreasureChest = 54
     TreasureCrown = 55
     LifeUp = 56
+    SkeletonBlood = 57
+    Blood = 61
 
 enum Props
     GreenBarrel = 24
@@ -671,7 +673,7 @@ def isKey ( m1:int )
     return m1==43 || m1==44
 
 def isHpRestore ( m1:int )
-    return m1==29 || m1==47 || m1==48
+    return m1==29 || m1==47 || m1==48 || m1==57 || m1==61
 
 def getPlayerDirection(dm:int; var dx,dy:float& )
     if dm==0
@@ -721,7 +723,7 @@ def isTreasure(m1:int)
     return (m1==52 || m1==53 || m1==54 || m1==55)
 
 def isCollectible(m1:int)
-    return (m1==29 || m1==43 || m1==44 || m1==47 || m1==48 || m1==49 || m1==50 || m1==51 || m1==52 || m1==53 || m1==54 || m1==55 || m1==56)
+    return (m1==29 || m1==43 || m1==44 || m1==47 || m1==48 || m1==49 || m1==50 || m1==51 || m1==52 || m1==53 || m1==54 || m1==55 || m1==56 || m1==57 || m1==61)
 
 def isBlocking(m1:int)
     return (m1==24 || m1==25 || m1==26 || m1==28 || m1==30 || m1==31 || m1==33 || m1==34 || m1==35 || m1==36 || m1==39 || m1==40 || m1==41 || m1==45 || m1==58 || m1==59 || m1==60 || m1==62 || m1==63 || m1==68 || m1==69)
@@ -888,11 +890,13 @@ struct EnemyClass
     deathSound : SoundName  // sound played when enemy dies
     agroSound : SoundName   // sound played when enemy sees player
 // everything ai
+    points : int            // how many points player gets for killing enemy
     canOpenDoors : bool     // can enemy open doors
 
 let enemyClasses <- [[EnemyClass
 // guard
     hp = 25,
+    points = 100,
     radius = .25,
     speed = 0.065 * 0.35,
     canOpenDoors = true,
@@ -912,6 +916,7 @@ let enemyClasses <- [[EnemyClass
     attackSprites <- [{auto 96; 97; -98; 97; 50}];
 // dog
     hp = 1,
+    points = 50,
     radius = .3,
     speed = 0.065 / 2.,
     canOpenDoors = false,
@@ -931,6 +936,7 @@ let enemyClasses <- [[EnemyClass
     attackSprites <- [{auto 135; 136; -137; 136; 99}];
 // officer
     hp = 50,
+    points = 400,
     radius = .3,
     speed = 0.065 * 0.5,
     canOpenDoors = true,
@@ -950,6 +956,7 @@ let enemyClasses <- [[EnemyClass
     attackSprites <- [{auto 285; 286; -287; 286; 238}];
 // ss
     hp = 50,
+    points = 500,
     radius = .3,
     speed = 0.065 * 0.5,
     canOpenDoors = true,
@@ -969,6 +976,7 @@ let enemyClasses <- [[EnemyClass
     attackSprites <- [{auto 184; 185; -186; 185; 138}];
 // mutant
     hp = 45,
+    points = 700,
     radius = .4,
     speed = 0.065 * 0.35,
     canOpenDoors = true,
@@ -988,6 +996,7 @@ let enemyClasses <- [[EnemyClass
     attackSprites <- [{auto 234; -235; 236; -237; 236; 187}];
 // hansGrosse
     hp = 800,
+    points = 5000,
     radius = .4,
     speed = 0.065 * 0.35,
     canOpenDoors = true,
@@ -1031,6 +1040,8 @@ struct Player
     pos : float2
     dir : float2
     health : int = 100
+    lives : int = 5
+    score : int = 0
     silverKey : bool
     goldKey : bool
     ammo : int = 8
@@ -1148,6 +1159,7 @@ def die ( var self:Enemy )
         orientable = false
         self |> startAnimation(new Animation(enemyClasses[int(enemyCategory)].deathSprites))
         play_game_sound_2d(enemyClasses[int(enemyCategory)].deathSound, pos, PAIN_SOUND_RADIUS)
+        player |> gainPoints(enemyClasses[int(enemyCategory)].points)
         if enemyCategory==EnemyCategory dog
             // self |> dropLoot(cx,cy,Collectible dogBone)
             pass
@@ -1161,6 +1173,7 @@ def die ( var self:Enemy )
             dropLoot(pos,Collectible Chaingun, 1.)
         elif enemyCategory==EnemyCategory hansGrosse
             dropLoot(pos,Collectible KeyGold, 1., true)
+
 
 def dropLoot ( XY : float2; loot:Collectible; chanceToDrop:float; force:bool = false ) : bool
     let drop = random_float(seed)
@@ -1422,6 +1435,36 @@ def move ( var self:Player; length,sideways:float )
         if newxy != oldxy
             player |> collect(newxy)
 
+def gainLifeUp ( var self:Player )
+    with self
+        health = 100
+        lives ++
+        ammo = min(99,ammo+25)
+        play_game_sound(SoundName BONUS1UPSND)
+        hudText("YOU NOW HAVE {lives} LIVES", 2.)
+
+def gainPoints ( var self:Player; points:int; hud:bool=false )
+    with self
+        score += points
+        if score >= 30000           // todo: at the end of the level
+            score -= 30000
+            self |> gainLifeUp()
+        elif hud
+            hudText("SCORE {score}", 2.)
+
+def gainTreasure ( var self:Player; m1:int; col:Collectible )
+    with self
+        play_game_sound(treasureAudio[m1-52])
+        flashScreen(float4(0.,0.,1.,1.),float4(255.,255.,0.,0.), 3. / 60.)
+        if col==Collectible TreasureCross
+            player |> gainPoints(100,true)
+        elif col==Collectible TreasureChalice
+            player |> gainPoints(500,true)
+        elif col==Collectible TreasureChest
+            player |> gainPoints(1000,true)
+        elif col==Collectible TreasureCrown
+            player |> gainPoints(5000,true)
+
 def collect ( var self:Player; XY:int2 )
     with self
     // WE TRIGGER LEVEL SWITCHES HERE AFTER BOSSES
@@ -1453,11 +1496,16 @@ def collect ( var self:Player; XY:int2 )
                         elif col==Collectible Medkit
                             play_game_sound(SoundName HEALTH2SND)
                             health += 24
+                        elif col==Collectible SkeletonBlood || col==Collectible Blood
+                            if health < 10
+                                play_game_sound(SoundName SLURPIESND)
+                                health += 1
+                            else
+                                collected |> pop()
                         health = min(health, 100)
                 elif col==Collectible LifeUp
-                    health = 200
+                    self |> gainLifeUp()
                     collected |> push(index)
-                    play_game_sound(SoundName BONUS1UPSND)
                 elif isKey(m1)
                     if col==Collectible KeySilver
                         silverKey = true
@@ -1466,19 +1514,18 @@ def collect ( var self:Player; XY:int2 )
                     collected |> push(index)
                     play_game_sound(SoundName GETKEYSND)
                 elif col==Collectible AmmoClip
-                    if ammo < 199
+                    if ammo < 99
                         collected |> push(index)
-                        ammo = min(199,ammo+8)
+                        ammo = min(99,ammo+8)
                         play_game_sound(SoundName GETAMMOSND)
                 elif isTreasure(m1)
                     collected |> push(index)
-                    play_game_sound(treasureAudio[m1-52])
-                    flashScreen(float4(0.,0.,1.,1.),float4(255.,255.,0.,0.), 3. / 60.)
+                    self |> gainTreasure(m1,col)
                 elif col == Collectible MachineGun || col == Collectible Chaingun
                     let wep = (col==Collectible MachineGun) ? WeaponType machineGun : WeaponType chainGun
-                    if !hasWeapon[int(wep)] || ammo<199
+                    if !hasWeapon[int(wep)] || ammo<99
                         collected |> push(index)
-                        ammo = min(199,ammo+25)
+                        ammo = min(99,ammo+25)
                         if !hasWeapon[int(wep)]
                             play_game_sound((col==Collectible MachineGun) ? SoundName GETMACHINESND : SoundName GETGATLINGSND)
                             hasWeapon[int(wep)] = true
@@ -1570,7 +1617,7 @@ def shoot ( var self:Player )
             if weaponType == WeaponType knife
                 play_game_sound(SoundName ATKKNIFESND)
             else
-                ammo --
+                ammo -= weaponType == WeaponType chainGun ? 2 : 1
                 play_game_sound(weaponSounds[int(weaponType)])
                 alert(pos,SHOT_ALERT_RADIUS)
             weaponAnimation = new Animation([{for frame in range(4); frame+416+int(weaponType)*5}])
@@ -1671,8 +1718,10 @@ def clearKeys ( var self:Player )
         silverKey = false
 
 def die ( var self:Player )
-    self.health = 0
-    play_game_sound(SoundName DEATHSCREAM5SND)
+    with self
+        health = 0
+        lives --
+        play_game_sound(SoundName DEATHSCREAM5SND)
 
 def takeDamage ( var self:Player; DAMAGE:int )
     with self
@@ -1729,7 +1778,7 @@ def updatePalette
             setupLevel(nextLevelIndex)
             levelFade = 0.
             dLevelFade = LEVEL_FADE_FACTOR
-    elif player.health <= 25 || flashTime > 0.
+    elif (player.health>0 && player.health <= 25) || flashTime > 0.
         // health fading to red + flash
         playerHeartbeatTime += 1./60. * frame_time
         if playerHeartbeatTime > 2.
@@ -1751,7 +1800,7 @@ def updatePalette
     else
         application->set_palette(GamePalette)
 
-def setupLevel ( index:int )
+def setupLevel ( var index:int )
     to_log(LOG_INFO, "LOADING LEVEL {index}\n}")
     level := Levels[index]
     delete objects
@@ -1763,7 +1812,12 @@ def setupLevel ( index:int )
         for t in ty
             t.active = false
     if becauseOfDeath
+        var oldLives = player.lives
+        if player.lives==0
+            index = 0
+            oldLives = 5
         player = Player()
+        player.lives = oldLives
     else
         player |> clearKeys()
     for y in range(64)
@@ -2515,6 +2569,11 @@ def draw ( level:Level; var bmp:Bitmap8# )
     if dLevelFade == 0.
         drawWeapon(bmp)
         drawHUD(bmp)
+    if player.health == 0
+        rast_fillRect(bmp,0,0,bmp.size.x,bmp.size.y,32u8)    // right red?
+        let text = player.lives!=0 ? "{player.lives} LIVES LEFT" : "YOU DIED"
+        let dim = getHUDTextDim(text)
+        drawHUDText(160-dim.width/2,100-dim.height/20-8,text,bmp)
     if DRAW_VISIBILITY
         drawVisibility(bmp)
     if DRAW_COLLISION

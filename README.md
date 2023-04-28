@@ -17,13 +17,18 @@ note: we render column-major, not your typical row-major. host application shoul
 
 TODO: in no particular order
 
-1. additional health items - things like blood puddles, etc. stop going over 100hp
-2. life system - and points for treasures. when run out of extra life - restart
-3. redo death screen - so that we can display some text
-4. projectiles (and the rest of the bosses, only hans gesse works so far)
-5. something new to the game - current idea is to implement particles for blood, bullet shots
-6. sounds for hitting surfaces
-7. chaingun to take 2 ammo at the time. figure out max ammo
+* figure out font file format
+* move "fio" into application
+* projectiles
+* the rest of the bosses (only hans gesse works so far)
+* something new to the game - current idea is to implement particles for blood, bullet shots
+* sounds for hitting surfaces
+* hinting next to secret walls
+* finish level screen - give LifeUp's there
+* high-score table
+* add links to all the sources i was looking at, while developing the demo
+
+
 
 
 

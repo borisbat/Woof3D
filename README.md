@@ -17,7 +17,7 @@ note: we render column-major, not your typical row-major. host application shoul
 
 TODO: in no particular order
 
-* figure out font file format
+* figure out loading screen formats (get psyched?)
 * move "fio" into application
 * projectiles
 * the rest of the bosses (only hans gesse works so far)
@@ -26,8 +26,12 @@ TODO: in no particular order
 * hinting next to secret walls
 * finish level screen - give LifeUp's there
 * high-score table
+* UI
 * add links to all the sources i was looking at, while developing the demo
 
+Things I've been looking at:
+
+https://github.com/vpoupet/wolfenstein
 
 
 

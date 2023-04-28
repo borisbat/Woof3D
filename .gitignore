@@ -31,3 +31,11 @@
 *.out
 *.app
 .vscode/settings.json
+data/LEVELS/LEVEL_0.txt
+data/LEVELS/LEVEL_1.txt
+data/LEVELS/
+data/PICTURES/font_0_100.png
+data/PICTURES/
+data/SOUNDS/
+data/SPRITES/
+data/WALLS/

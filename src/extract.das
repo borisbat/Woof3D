@@ -112,6 +112,20 @@ def public save_pic ( pic:Picture; prefix:string; index:int )
         d = GamePalette[int(s)]
     stbi_write_png(filename, pic.width, pic.height, 4, unsafe(addr(data[0])), pic.width*4)
 
+def public save_font ( font:Font; prefix:string; index:int )
+    let folder = "{WL6_FILES_ROOT}/PICTURES"
+    mkdir(folder)
+    for Ch in range(256)
+        let pic = font.letters[Ch]
+        if pic==null
+            continue
+        let filename = "{folder}/{prefix}_{index}_{Ch}.png"
+        var data : array<uint>
+        data |> resize(pic.width * pic.height)
+        for d,s in data,pic.texels
+            d = GamePalette[int(s)]
+        stbi_write_png(filename, pic.width, pic.height, 4, unsafe(addr(data[0])), pic.width*4)
+
 def public DumpFiles
     for i in range(WallPics |> length)
         save_wall_pic(i)
@@ -125,6 +139,8 @@ def public DumpFiles
         save_sound(Audio[i],"audio",i)
     for i in range(Pictures |> length)
         save_pic(Pictures[i],"pic",i)
+    for i in range(Fonts |> length)
+        save_font(Fonts[i],"font",i)
 
 [export]
 def main

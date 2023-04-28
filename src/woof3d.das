@@ -121,6 +121,13 @@ struct Picture
 
 var Pictures : array<Picture>
 
+struct Font
+    height : int
+    width : int[256]
+    letters : Picture? [256]
+
+var Fonts : array<Font>
+
 let GamePalette = [[uint
     0xff000000; 0xffa80000; 0xff00a800; 0xffa8a800; 0xff0000a8; 0xffa800a8; 0xff0054a8; 0xffa8a8a8;
     0xff545454; 0xfffc5454; 0xff54fc54; 0xfffcfc54; 0xff5454fc; 0xfffc54fc; 0xff54fcfc; 0xfffcfcfc;
@@ -448,9 +455,27 @@ def InitPics
     for i in range(PIC_ENDS, NUMBER_OF_PIC_CHUNKS-1)
         var cl = PicOffsets[i+1] - PicOffsets[i]
         var el = int(bytes |> getUInt32(PicOffsets[i]))
-    for i in range(0,PIC_STARTS)
+    for i in range(1,PIC_STARTS)
+        var font : Font
         var cl = PicOffsets[i+1] - PicOffsets[i]
         var el = int(bytes |> getUInt32(PicOffsets[i]))
+        array_view(bytes, PicOffsets[i+1]+4, cl) <| $ ( view )
+            var data <- ExtractPic(bytes, i)
+            let height = int(data |> getUInt16(0))
+            font.height = height
+            for ii in range(256)
+                let ofs = int(data |> getUInt16(2+ii*2))
+                let width = int(data |> getUInt8(2+256*2+ii))
+                font.width[ii] = width
+                if width != 0
+                    var pic = new [[Picture width=width, height=height]]
+                    pic.texels |> resize(width*height)
+                    for y in range(height)
+                        for x in range(width)
+                            pic.texels[y*width+x] = data[ofs+y*width+x]
+                    pic.data <- FlipTexels(pic.texels, pic.width, pic.height)
+                    font.letters[ii] = pic
+            Fonts |> emplace(font)
 
 def InitFiles
     InitMapHead()
@@ -1441,7 +1466,7 @@ def gainLifeUp ( var self:Player )
         lives ++
         ammo = min(99,ammo+25)
         play_game_sound(SoundName BONUS1UPSND)
-        hudText("YOU NOW HAVE {lives} LIVES", 2.)
+        hudText("You now have {lives} lives", 2.)
 
 def gainPoints ( var self:Player; points:int; hud:bool=false )
     with self
@@ -1450,7 +1475,7 @@ def gainPoints ( var self:Player; points:int; hud:bool=false )
             score -= 30000
             self |> gainLifeUp()
         elif hud
-            hudText("SCORE {score}", 2.)
+            hudText("Score {score}", 2.)
 
 def gainTreasure ( var self:Player; m1:int; col:Collectible )
     with self
@@ -1680,12 +1705,12 @@ def activate ( var self:Player )
             if isGoldDoor(m0) && !goldKey
                 // gold-locked door
                 play_game_sound_2d(SoundName HALTSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS)
-                hudText("GOLD KEY REQUIRED!", 2.)
+                hudText("Golden key is required!", 2.)
                 return
             if isSilverDoor(m0) && !silverKey
                 // silver-locked door
                 play_game_sound_2d(SoundName HALTSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS)
-                hudText("SILVER KEY REQUIRED!", 2.)
+                hudText("Sivler key is required!", 2.)
                 return
             openDoor(X,Y)
         elif m1 == 98
@@ -1703,6 +1728,7 @@ def activate ( var self:Player )
                     isWall = true
                 ]]
                 play_game_sound_2d(SoundName OPENDOORSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS)
+                self |> gainPoints(1000)
         else
             assume timer = timer_plane[X][Y]
             if !timer.active
@@ -2437,6 +2463,17 @@ def draw2DElement ( x,y,w,h:int; var pic:Picture; var bmp:Bitmap8# )
             rast_hspan_u8(bmp.data,y+X*bmp.size.y,tspan,px*pic.height,0.,DV,h)
             u += du
 
+def drawMasked2DElement ( x,y,w,h:int; var pic:Picture; var bmp:Bitmap8# )
+    var u = 0.
+    let du = 1. / float(w+1)
+    let dv = 1. / float(h+1)
+    var DV = dv * float(pic.height)
+    lock(pic.data) <| $ ( tspan )
+        for X in range(x,x+w)
+            let px = floori(u * float(pic.width))
+            rast_hspan_masked_u8(bmp.data,y+X*bmp.size.y,tspan,px*pic.height,0.,DV,h)
+            u += du
+
 def drawBackground ( var bmp:Bitmap8# )
     let h = bmp.size.y / 2
     rast_fillRect(bmp,0,0,bmp.size.x,h,29u8)
@@ -2454,14 +2491,17 @@ def drawWeapon ( var bmp:Bitmap8# )
 
 var hudFactor = 1.
 
-def drawHUDElement(x,y,w,h:int; var pic:Picture; var bmp:Bitmap8# )
+def drawHUDElement(x,y,w,h:int; var pic:Picture; var bmp:Bitmap8#; masked:bool=false )
     var minx = max(floori(float(x)*hudFactor), 0)
     var maxx = min(floori(float(x+w)*hudFactor), bmp.size.x)
     var miny = max(floori(float(y)*hudFactor), 0)
     var maxy = min(floori(float(y+h)*hudFactor), bmp.size.y)
     if minx>maxx || miny>maxy
         return
-    draw2DElement(minx,miny,maxx-minx,maxy-miny,pic,bmp)
+    if masked
+        drawMasked2DElement(minx,miny,maxx-minx,maxy-miny,pic,bmp)
+    else
+        draw2DElement(minx,miny,maxx-minx,maxy-miny,pic,bmp)
 
 def drawHUDNum(x,y:int; num:int; var bmp:Bitmap8# )
     let txt = "{num}"
@@ -2513,6 +2553,29 @@ def drawHUDText(x,y:int; text:string; var bmp:Bitmap8# )
         drawHUDElement(X,y,W,Pictures[index].height,Pictures[index],bmp)
         X += W
 
+def getFontTextDim(text:string; font:Font) : tuple<width:int;height:int>
+    var X = 0
+    for chu in text
+        X += font.width[chu]
+    return [[auto X,font.height]]
+
+def drawFontText(x,y:int; text:string; var bmp:Bitmap8#; var font:Font )
+    var X = x
+    for chu in text
+        let W = font.width[chu]
+        drawHUDElement(X,y,W,font.height,*font.letters[chu],bmp,true)
+        X += W
+
+[sideeffects]
+def setFontColor ( col:uint8; var font:Font )
+    for Ch in range(256)
+        var pic = font.letters[Ch]
+        if pic==null
+            continue
+        for p in pic.data
+            if p!=0u8
+                p = col
+
 def drawHUD ( var bmp:Bitmap8# )
     // health head (24x32)
     var frame = 0
@@ -2533,8 +2596,8 @@ def drawHUD ( var bmp:Bitmap8# )
     drawHUDNum(1+24,200-17,player.ammo,bmp)
     // hud
     if !empty(hudMessage)
-        let dim = getHUDTextDim(hudMessage)
-        drawHUDText(160-dim.width/2,2,hudMessage,bmp)
+        let dim = getFontTextDim(hudMessage,Fonts[0])
+        drawFontText(160-dim.width/2,2,hudMessage,bmp,Fonts[0])
 
 def drawVisibility ( var bmp:Bitmap8# )
     for x in range(64)
@@ -2579,15 +2642,16 @@ def draw ( level:Level; var bmp:Bitmap8# )
     if DRAW_COLLISION
         drawCollision(bmp)
     if DRAW_PLAYER_POSITION
-        let text = "{floori(player.x)} {floori(player.y)}"
-        let dim = getHUDTextDim(text)
-        drawHUDText(160-dim.width/2,200-16,text,bmp)
+        let text = "{floori(player.pos.x)} {floori(player.pos.y)}"
+        let dim = getFontTextDim(text,Fonts[0])
+        drawFontText(160-dim.width/2,200-16,text,bmp,Fonts[0])
 
 // ------------------------------------------------------------
 
 def woof3d_main ( app:Application? )
     application = app
     InitFiles()
+    setFontColor(71u8,Fonts[0])
     setupLevel(0)
     levelFade = 0.
     dLevelFade = LEVEL_FADE_FACTOR

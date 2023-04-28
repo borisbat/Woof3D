@@ -23,7 +23,6 @@ TODO: in no particular order
 * the rest of the bosses (only hans gesse works so far)
 * something new to the game - current idea is to implement particles for blood, bullet shots
 * sounds for hitting surfaces
-* hinting next to secret walls
 * finish level screen - give LifeUp's there
 * high-score table
 * UI

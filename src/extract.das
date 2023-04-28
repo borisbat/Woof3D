@@ -50,10 +50,13 @@ def save_level ( level:int )
     fopen(filename, "w") <| $ ( file )
         if file == null
             return
+        var apppend = ""
         let txt = build_string <| $ ( writer )
             for y in 0..64
                 for x in 0..64
                     writer |> format("%02x", int(Levels[level].plane0[y][x]))
+                    if Levels[level].plane0[y][x] == 107
+                        apppend = "\n\nSECRET ELEVATOR AT {x},{y}\n"
                 writer |> write("\n")
             writer |> write("\n")
             for y in 0..64
@@ -62,6 +65,7 @@ def save_level ( level:int )
                 writer |> write("\n")
             writer |> write("\n")
         file |> fwrite(txt)
+        file |> fwrite(apppend)
 
 struct WavHeader
     riff : uint8[4]             //  4(0)

@@ -76,6 +76,8 @@ let PIC_COUNT = 140
 let PIC_STARTS = 3
 let PIC_ENDS = 134
 
+let ElevatorBackTo = [[auto 1;1;7;3;5;3]]
+
 struct HuffmanNode
     node_0, node_1 : int
 
@@ -743,6 +745,12 @@ def isProp(m1:int)
 
 def isPushWall(m1:int)
     return m1==98
+
+def isElevator(m1:int)
+    return (m1==21)
+
+def isSecretElevator(m1:int)
+    return m1==107
 
 def isDeadGuard(m1:int)
     return m1==124
@@ -1706,9 +1714,16 @@ def activate ( var self:Player )
             Y += DY
         let m0 = level.plane0[X][Y]
         let m1 = level.plane1[X][Y]
-        if m0==21 && DX!=0
-            // elevator
-            switchLevel(levelIndex+1)
+        if isElevator(m0) && DX!=0
+            var toLevel = 0
+            let sublevel = levelIndex % 10  // level index in the episode
+            if  isSecretElevator(level.plane0[X-DX][Y])                     // now, we are looking at elevator door, not push-wall
+                toLevel = levelIndex - sublevel + 9 // to secret level
+            elif sublevel==9
+                toLevel = levelIndex - sublevel + ElevatorBackTo[levelIndex / 10]   // back from secret level
+            else
+                toLevel = levelIndex + 1    // to next level
+            switchLevel(toLevel)
         elif isDoor(m0)
             // door
             if isGoldDoor(m0) && !goldKey
@@ -2318,7 +2333,7 @@ def updatePlayer
         ]]
         collision_plane[X][Y] = true
     if application.cheat3
-        player.pos = float2(3.5,40.5)
+        player.pos = float2(12.5,51.5)
         player.dir = float2(0,1)
     if application.cheatSwitchLevel
         if application.cheatSwitchLevelShift
@@ -2617,6 +2632,10 @@ def drawMap ( var bmp:Bitmap8# )
     for x in range(64)
         for y in range(64)
             var col = collision_plane[x][y] ? 0u8 : 225u8
+            if level.plane0[x][y]==21
+                col = 1u8
+            elif level.plane0[x][y]==107
+                col = 5u8
             rast_fillRect(bmp, bmp.size.x/2 - 32*4 - 10 + x*4,10 + y*4,4,4,col)
     for e in enemies
         if e.category == Category enemy

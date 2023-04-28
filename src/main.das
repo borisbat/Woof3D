@@ -159,6 +159,9 @@ class OpenglApplication : woof3d::Application
                 update_3d_sound
     def update_controls
         // update cursor
+        if glfwGetWindowAttrib(window, int(GLFW_FOCUSED))==GLFW_FALSE
+            mouseDelta = float2(0.)
+            return
         var cxy = glfwGetCursorPos(window)
         cursor_delta_xy = cxy - cursor_position_xy
         cursor_position_xy = float2(bb_width/2,bb_height/2)

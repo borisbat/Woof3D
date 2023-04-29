@@ -72,7 +72,7 @@ let PC_RATE = 140
 let PC_BASE_TIMER = 1193181
 let PC_VOLUME = 20
 
-let PIC_COUNT = 140
+let PIC_COUNT = 141
 let PIC_STARTS = 3
 let PIC_ENDS = 134
 

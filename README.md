@@ -17,7 +17,6 @@ note: we render column-major, not your typical row-major. host application shoul
 
 TODO: in no particular order
 
-* figure out loading screen formats (get psyched?)
 * move "fio" into application
 * projectiles
 * the rest of the bosses (only hans gesse works so far)

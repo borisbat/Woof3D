@@ -422,12 +422,12 @@ def huffman_expand ( src:array<uint8>#; length:int )
             node = node_value - 256
     return <- dst
 
-def ExtractPic ( bytes:array<uint8>; magic_number:int )
+def ExtractPic ( bytes:array<uint8>; magic_number:int; var expand_length:int& )
     var next_index = magic_number + 1
     while PicOffsets[next_index] == -1 && next_index < PIC_COUNT
         next_index += 1
     var compressed_length = PicOffsets[next_index] - PicOffsets[magic_number]
-    var expand_length = int(bytes |> getUInt32(PicOffsets[magic_number]))
+    expand_length = int(bytes |> getUInt32(PicOffsets[magic_number]))
     var texels : array<uint8>
     array_view(bytes, PicOffsets[magic_number]+4, compressed_length) <| $ ( view )
         texels <- huffman_expand(view, expand_length)
@@ -464,7 +464,10 @@ def InitPics
     for picture,i in Pictures,count()
         picture.width = int(exp_buf[4*i  ]) | int(exp_buf[4*i+1])
         picture.height = int(exp_buf[4*i+2]) | int(exp_buf[4*i+3])
-        picture.texels <- ExtractPic(bytes, i+PIC_STARTS) |> ExtractTexels(picture.width,picture.height)
+        var eps = 0
+        var texels <- ExtractPic(bytes, i+PIC_STARTS,eps)
+        picture.width = eps / picture.height
+        picture.texels <- texels |> ExtractTexels(picture.width,picture.height)
         picture.data <- FlipTexels(picture.texels, picture.width, picture.height)
     for i in range(PIC_ENDS, NUMBER_OF_PIC_CHUNKS-1)
         var cl = PicOffsets[i+1] - PicOffsets[i]
@@ -474,7 +477,8 @@ def InitPics
         var cl = PicOffsets[i+1] - PicOffsets[i]
         var el = int(bytes |> getUInt32(PicOffsets[i]))
         array_view(bytes, PicOffsets[i+1]+4, cl) <| $ ( view )
-            var data <- ExtractPic(bytes, i)
+            var eps = 0
+            var data <- ExtractPic(bytes, i, eps)
             let height = int(data |> getUInt16(0))
             font.height = height
             for ii in range(256)

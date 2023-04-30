@@ -116,7 +116,7 @@ class OpenglApplication : woof3d::Application
         // TODO: setup music manager
         stop_sound(music.handle)
         music.snd <- create_sound(filename)
-        music.handle = play_sound(music.snd)
+        music.handle = play_sound_loop(music.snd)
         music.busy = false
     def override play_app_sound ( wave:array<float>; freq:int )
         let i = allocate_app_sound()

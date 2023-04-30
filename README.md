@@ -3,6 +3,10 @@
 The intent here is to have 100% 'safe' version of the classic game demo,
 while stressing the performance of the interpreter.
 
+Music is the only major exception. I've used digitized or PC sounds for they are very easy to decode.
+Adlib sounds and music require the full blown OPL3 integration and an appropriate music player.
+So I decided to go with more direct approach.
+
 How to integrate:
 
 1. require woof3d
@@ -33,7 +37,9 @@ Things I've been looking at:
 https://github.com/id-Software/wolf3d
 https://github.com/vpoupet/wolfenstein
 
+Music:
 
+http://www.vgmpf.com/Wiki/index.php/Wolfenstein_3D_(DOS)
 
 
 

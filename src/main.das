@@ -107,10 +107,17 @@ class OpenglApplication : woof3d::Application
     okButton, prevOkButton : bool
     cancelButton, prevCancelButton : bool
     playing_sounds : PlayingSound[MAX_SOUNDS]
+    music : PlayingSound
     sound_head_position : float2
     sound_head_direction : float2
     def override quit : void
         glfwSetWindowShouldClose(window, GLFW_TRUE)
+    def override play_music ( filename:string ) : void
+        // TODO: setup music manager
+        stop_sound(music.handle)
+        music.snd <- create_sound(filename)
+        music.handle = play_sound(music.snd)
+        music.busy = false
     def override play_app_sound ( wave:array<float>; freq:int )
         let i = allocate_app_sound()
         if i<0

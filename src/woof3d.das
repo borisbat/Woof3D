@@ -51,6 +51,7 @@ class Application
     upButtonPressed : bool
     downButtonPressed : bool
 
+    def abstract play_music ( filename:string ) : void
     def abstract play_app_sound ( wave:array<float>; freq:int ) : void
     def abstract play_app_sound_2d ( pos:float2; radius:float; wave:array<float>; freq:int ) : void
     def abstract set_palette ( pal : uint[256] ) : void
@@ -81,6 +82,8 @@ let PC_VOLUME = 20
 let PIC_COUNT = 141
 let PIC_STARTS = 3
 let PIC_ENDS = 134
+
+var at_app_start = false
 
 let ElevatorBackTo = [[auto 1;1;7;3;5;3]]
 
@@ -136,7 +139,6 @@ struct Font
     height : int
     width : int[256]
     letters : Picture? [256]
-
 
 var Fonts : array<Font>
 
@@ -554,12 +556,14 @@ def InitPics
                     font.letters[ii] = pic
             Fonts |> emplace(font)
 
+def InitFilesFirst
+    InitPics()
+
 def InitFiles
     InitMapHead()
     InitGameMap()
     InitResources()
     InitAudio()
-    InitPics()
 
 // -------------------- sound system --------------------
 
@@ -2825,6 +2829,9 @@ def defaultSplash ( _dt:float )
         dLevelFade = -LEVEL_FADE_FACTOR
 
 def loadScreen0 ( dt:float; var bmp:Bitmap8# )
+    if dLevelFade==0. && !at_app_start
+        at_app_start = true
+        InitFiles()
     defaultSplash(dt)
     updatePalette()
     beforeDraw(bmp)
@@ -3002,9 +3009,9 @@ def wolf3d_setGameMode ( mode:GameMode )
     splashTimer = DEFAULT_SPLASH_TIMER
 
 def woof3d_main ( app:Application? )
-    // lookup_colors()
     application = app
-    InitFiles()
+    application->play_music("{WL6_FILES_ROOT}/1.mp3")
+    InitFilesFirst()
     setFontColor(uint8(Color BRIGHT_YELLOW),Fonts[0])
     // setupLevel(0)
     levelFade = 0.

@@ -137,6 +137,7 @@ struct Font
     width : int[256]
     letters : Picture? [256]
 
+
 var Fonts : array<Font>
 
 let GamePalette = [[uint
@@ -857,12 +858,14 @@ enum GameMode
     loadScreen2 // title
     loadScreen3 // credits
     mainMenu    // main menu (new game\save\load\etc)
+    episodeMenu // episode menu (1-6)
     playing
 
 var gameMode = GameMode loadScreen0
 
 var cursorTimer = 0.
 var mainMenuSelection = 0
+var episodeMenuSelection = 0
 
 var frame_time = 0.66
 
@@ -1845,9 +1848,15 @@ def nextGameMode
         gameMode = GameMode mainMenu
     elif gameMode == GameMode mainMenu
         if mainMenuSelection == 0           // new game
-            gameMode = GameMode playing
+            gameMode = GameMode episodeMenu
         elif mainMenuSelection == 5         // quit
             application->quit()
+        // TODO: support other menu options
+    elif gameMode == GameMode episodeMenu
+        nextLevelIndex = episodeMenuSelection * 10
+        levelIndex = nextLevelIndex
+        setupLevel(nextLevelIndex)
+        gameMode = GameMode playing
         // TODO: support other game modes
     splashTimer = DEFAULT_SPLASH_TIMER
 
@@ -2749,7 +2758,8 @@ def draw ( level:Level; var bmp:Bitmap8# )
         let dim = getFontTextDim(text,Fonts[0])
         drawFontText(160-dim.width/2,200-16,text,bmp,Fonts[0])
 
-enum Picture
+enum PictureIndex
+    NONE = -1
     WOFLENSTEIN = 10
     ID_LOGO = 13
     OPTIONS = 18
@@ -2758,6 +2768,12 @@ enum Picture
     CHECKBOX_UNCHECKED = 21
     CHECKBOX_CHECKED = 22
     MENU_HINT = 26
+    EPISODE_1 = 38
+    EPISODE_2 = 39
+    EPISODE_3 = 40
+    EPISODE_4 = 41
+    EPISODE_5 = 42
+    EPISODE_6 = 43
     TITLE_SCREEN = 93
     PC13_LOGO = 94
     CREDITS_SCREEN = 95
@@ -2785,6 +2801,8 @@ enum Color : uint8
     VERY_LIGHT_GREY = 16u8
     DARK_GREY = 8u8
     BACKGROUND_RED = 45u8
+    YELLOW = 71u8
+    DARK_YELLOW = 6u8
     BRIGHT_YELLOW = 235u8
     VERY_DARK_BLUE = 227u8
 
@@ -2803,12 +2821,12 @@ def loadScreen0 ( dt:float; var bmp:Bitmap8# )
     beforeDraw(bmp)
     rast_fillRect(bmp,0,0,bmp.size.x,bmp.size.y,uint8(Color RED_5))
     fillHUDRect(10,70,140,106,uint8(Color RED_BACKGROUND),bmp)
-    assume wpic = Pictures[int(Picture WOFLENSTEIN)]
+    assume wpic = Pictures[int(PictureIndex WOFLENSTEIN)]
     drawHUDSubElement(
         160-wpic.width/2,10,wpic.width,wpic.height,
         0,0,wpic.width-5,wpic.height-9,
         wpic,bmp)
-    assume lpic = Pictures[int(Picture ID_LOGO)]
+    assume lpic = Pictures[int(PictureIndex ID_LOGO)]
     drawHUDSubElement(
         10,10,lpic.width,lpic.height,
         0,0,lpic.width-2,lpic.height,
@@ -2829,7 +2847,7 @@ def loadScreen0 ( dt:float; var bmp:Bitmap8# )
     drawFontText(15,90,"{int64(hba)} heap",bmp,font)
     assume fontr = Fonts[0]
     setFontColor(uint8(Color LIGHT_GREY),fontr)
-    assume cbpic = Pictures[int(Picture CHECKBOX_CHECKED)]
+    assume cbpic = Pictures[int(PictureIndex CHECKBOX_CHECKED)]
     let iH = 22
     let i0 = 70
     for i in range(5)
@@ -2844,7 +2862,7 @@ def loadScreen1 ( dt:float; var bmp:Bitmap8# )
     defaultSplash(dt)
     updatePalette()
     beforeDraw(bmp)
-    assume lpic = Pictures[int(Picture PC13_LOGO)]
+    assume lpic = Pictures[int(PictureIndex PC13_LOGO)]
     rast_fillRect(bmp,0,0,bmp.size.x,bmp.size.y,lpic.texels[0])
     drawHUDElement(320-lpic.width-20, 200-lpic.height-30,lpic.width,lpic.height,lpic,bmp)
 
@@ -2852,23 +2870,27 @@ def loadScreen2 ( dt:float; var bmp:Bitmap8# )
     defaultSplash(dt)
     updatePalette()
     beforeDraw(bmp)
-    assume lpic = Pictures[int(Picture TITLE_SCREEN)]
+    assume lpic = Pictures[int(PictureIndex TITLE_SCREEN)]
     drawHUDElement(0,0,lpic.width,lpic.height,lpic,bmp)
 
 def loadScreen3 ( dt:float; var bmp:Bitmap8# )
     defaultSplash(dt)
     updatePalette()
     beforeDraw(bmp)
-    assume lpic = Pictures[int(Picture CREDITS_SCREEN)]
+    assume lpic = Pictures[int(PictureIndex CREDITS_SCREEN)]
     drawHUDElement(0,0,lpic.width,lpic.height,lpic,bmp)
 
-let menuOptions <- [{auto
-    "New Game";
-    "Options";
-    "Load Game";
-    "Save Game";
-    "Read this!";
-    "Quit"
+struct MenuOption
+    text : string
+    icon : PictureIndex
+
+let mainMenuOptions <- [{MenuOption
+    text="New Game", icon=PictureIndex NONE;
+    text="Options", icon=PictureIndex NONE;
+    text="Load Game", icon=PictureIndex NONE;
+    text="Save Game", icon=PictureIndex NONE;
+    text="Read this!", icon=PictureIndex NONE;
+    text="Quit", icon=PictureIndex NONE;
 }]
 
 def mainMenu ( dt:float; var bmp:Bitmap8# )
@@ -2879,27 +2901,73 @@ def mainMenu ( dt:float; var bmp:Bitmap8# )
         if application.upButtonPressed
             mainMenuSelection = max(0,mainMenuSelection-1)
         if application.downButtonPressed
-            mainMenuSelection = min(menuOptions|>length-1,mainMenuSelection+1)
+            mainMenuSelection = min(mainMenuOptions|>length-1,mainMenuSelection+1)
         if application.okButtonPressed
             dLevelFade = -LEVEL_FADE_FACTOR
     rast_fillRect(bmp,0,0,bmp.size.x,bmp.size.y,uint8(Color RED_BACKGROUND))
-    assume opic = Pictures[int(Picture OPTIONS)]
+    assume opic = Pictures[int(PictureIndex OPTIONS)]
     rast_fillRect(bmp,0,0,bmp.size.x,bmp.size.y,opic.texels[0])
     drawHUDElement(160-opic.width/2, 20, opic.width,opic.height,opic,bmp)
     drawHUDSubElement(0,20,160-opic.width/2,opic.height,0,0,2,opic.height,opic,bmp)
     drawHUDSubElement(160+opic.width/2,20,(320-opic.width)/2,opic.height,0,0,2,opic.height,opic,bmp)
-    assume hpic = Pictures[int(Picture MENU_HINT)]
+    drawMenu(mainMenuSelection,mainMenuOptions, Fonts[1], dt, bmp)
+
+def drawMenu ( menuSelection:int; menuOptions:array<MenuOption>; var font:Font; dt:float; var bmp:Bitmap8# )
+    assume hpic = Pictures[int(PictureIndex MENU_HINT)]
+    var dim = int2(0,15)
+    for opt in menuOptions
+        var odim = getFontTextDim(opt.text,font)
+        if opt.icon != PictureIndex NONE
+            odim.width += Pictures[int(opt.icon)].width + 5
+            odim.height = max(odim.height,Pictures[int(opt.icon)].height+2)
+        dim = max(dim,int2(odim.width,odim.height))
+    assume cpinc = Pictures[int(cursorTimer<0.5 ? PictureIndex CURSOR_A : PictureIndex CURSOR_B)]
+    dim.x += cpinc.width+5
+    let minY = 200 - 20 - dim.y * menuOptions|>length
     drawHUDElement(160-hpic.width/2, 200-hpic.height-5, hpic.width,hpic.height,hpic,bmp)
-    assume cpinc = Pictures[int(cursorTimer<0.5 ? Picture CURSOR_A : Picture CURSOR_B)]
-    fillHUDRect(80,75,160,100,cpinc.texels[0],bmp)
-    assume font = Fonts[1]
+    fillHUDRect(160-dim.x/2-5,minY-5,dim.x+10,190-minY,cpinc.texels[0],bmp)
     setFontColor(uint8(Color VERY_LIGHT_GREY),font)
     for opt,opti in menuOptions,count()
-        let x = 110
-        let y = 80+opti*15
-        drawFontText(x,y,opt,bmp,font)
-        if opti==mainMenuSelection
-            drawHUDElement(x-cpinc.width-5,y+2,cpinc.width,cpinc.height,cpinc,bmp)
+        var x = 160-dim.x/2
+        var y = minY+opti*dim.y
+        if opti==menuSelection
+            drawHUDElement(x,y,cpinc.width,cpinc.height,cpinc,bmp)
+        x += cpinc.width+5
+        if opt.icon != PictureIndex NONE
+            assume pic = Pictures[int(opt.icon)]
+            drawHUDSubElement(x,y,pic.width,pic.height,0,0,pic.width,pic.height,pic,bmp)
+            x += pic.width+5
+            y += pic.height/2 - font.height/2
+        drawFontText(x,y,opt.text,bmp,font)
+
+let episodeOptions <- [{MenuOption
+    text="Escape from Wolfenstein", icon=PictureIndex EPISODE_1;
+    text="Operation: Eisenfaust", icon=PictureIndex EPISODE_2;
+    text="Die, Fuhrer, Die!", icon=PictureIndex EPISODE_3;
+    text="A Dark Secret", icon=PictureIndex EPISODE_4;
+    text="Trail of the Madman", icon=PictureIndex EPISODE_5;
+    text="Confrontation", icon=PictureIndex EPISODE_6;
+}]
+
+def episodeMenu ( dt:float; var bmp:Bitmap8# )
+    cursorTimer = (cursorTimer + dt * frame_time) % 1.
+    updatePalette()
+    beforeDraw(bmp)
+    if dLevelFade == 0.
+        if application.upButtonPressed
+            episodeMenuSelection = max(0,episodeMenuSelection-1)
+        if application.downButtonPressed
+            episodeMenuSelection = min(episodeOptions|>length-1,episodeMenuSelection+1)
+        if application.okButtonPressed
+            dLevelFade = -LEVEL_FADE_FACTOR
+    rast_fillRect(bmp,0,0,bmp.size.x,bmp.size.y,uint8(Color RED_BACKGROUND))
+    assume opic = Pictures[int(PictureIndex OPTIONS)]
+    rast_fillRect(bmp,0,0,bmp.size.x,bmp.size.y,opic.texels[0])
+    drawMenu(episodeMenuSelection,episodeOptions, Fonts[0], dt, bmp)
+    setFontColor(uint8(Color YELLOW),Fonts[1])
+    let text = "Which episode to play?"
+    let fdim = getFontTextDim(text,Fonts[1])
+    drawFontText(160-fdim.width/2, 3, text, bmp, Fonts[1])
 
 
 // ------------------------------------------------------------
@@ -2940,6 +3008,8 @@ def woof3d_update ( dt:float; var backbuffer:Bitmap8# )
         loadScreen3(dt, backbuffer)
     elif gameMode == GameMode mainMenu
         mainMenu(dt, backbuffer)
+    elif gameMode == GameMode episodeMenu
+        episodeMenu(dt, backbuffer)
     elif gameMode == GameMode playing
         updateGame(dt)
         draw(level, backbuffer)

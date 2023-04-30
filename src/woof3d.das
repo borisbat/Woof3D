@@ -183,6 +183,58 @@ let ceilingColors = [[auto
     0x1d;0x1d;0x1d;0x1d;0xdd;0xdd;0x7d;0xdd;0xdd;0xdd
 ]]
 
+enum PictureIndex
+    NONE = -1
+    WOFLENSTEIN = 10
+    ID_LOGO = 13
+    OPTIONS = 18
+    CURSOR_A = 19
+    CURSOR_B = 20
+    CHECKBOX_UNCHECKED = 21
+    CHECKBOX_CHECKED = 22
+    MENU_HINT = 26
+    DIFFICULTY_1 = 27
+    DIFFICULTY_2 = 28
+    DIFFICULTY_3 = 29
+    DIFFICULTY_4 = 30
+    EPISODE_1 = 38
+    EPISODE_2 = 39
+    EPISODE_3 = 40
+    EPISODE_4 = 41
+    EPISODE_5 = 42
+    EPISODE_6 = 43
+    TITLE_SCREEN = 93
+    PC13_LOGO = 94
+    CREDITS_SCREEN = 95
+
+enum Color : uint8
+    RED_VERY_DARK = 47u8
+    RED_DARK = 46u8
+    RED_BACKGROUND = 45u8
+    RED_4 = 44u8
+    RED_5 = 43u8
+    RED_6 = 42u8
+    RED_7 = 41u8
+    RED_8 = 40u8
+    RED_9 = 39u8
+    RED_10 = 4u8
+    RED_11 = 38u8
+    RED_12 = 37u8
+    RED_13 = 36u8
+    RED_14 = 35u8
+    RED_15 = 34u8
+    RED_16 = 33u8
+    RED_17 = 32u8
+    LIGHT_CYAN = 3u8
+    LIGHT_GREY = 7u8
+    VERY_LIGHT_GREY = 16u8
+    DARK_GREY = 8u8
+    BACKGROUND_RED = 45u8
+    YELLOW = 71u8
+    DARK_YELLOW = 6u8
+    BRIGHT_YELLOW = 235u8
+    VERY_DARK_BLUE = 227u8
+
 def LoadBytes ( filename : string )
     var bytes : array<uint8>
     fopen("{WL6_FILES_ROOT}/{filename}", "rb") <| $ ( fr )
@@ -859,13 +911,16 @@ enum GameMode
     loadScreen3 // credits
     mainMenu    // main menu (new game\save\load\etc)
     episodeMenu // episode menu (1-6)
+    difficultyMenu // difficulty menu
     playing
 
 var gameMode = GameMode loadScreen0
 
 var cursorTimer = 0.
+var splashTimer = 0.
 var mainMenuSelection = 0
 var episodeMenuSelection = 0
+var difficultyMenuSelection = 0
 
 var frame_time = 0.66
 
@@ -879,7 +934,7 @@ let DISABLE_AGRO = false    // if enemies should be agro at all
 let AGRO_TIME = 20.         // they stay agro even if they can't see you for that many seconds
 
 let LEVEL_FADE_TIME = 1.
-let LEVEL_FADE_FACTOR = 1.0 / LEVEL_FADE_TIME / 60.
+let LEVEL_FADE_FACTOR = 2. / LEVEL_FADE_TIME / 60.
 let DEFAULT_SPLASH_TIMER = 3.
 
 let PAIN_SOUND_RADIUS = 64.
@@ -1853,6 +1908,8 @@ def nextGameMode
             application->quit()
         // TODO: support other menu options
     elif gameMode == GameMode episodeMenu
+        gameMode = GameMode difficultyMenu
+    elif gameMode == GameMode difficultyMenu
         nextLevelIndex = episodeMenuSelection * 10
         levelIndex = nextLevelIndex
         setupLevel(nextLevelIndex)
@@ -2758,55 +2815,7 @@ def draw ( level:Level; var bmp:Bitmap8# )
         let dim = getFontTextDim(text,Fonts[0])
         drawFontText(160-dim.width/2,200-16,text,bmp,Fonts[0])
 
-enum PictureIndex
-    NONE = -1
-    WOFLENSTEIN = 10
-    ID_LOGO = 13
-    OPTIONS = 18
-    CURSOR_A = 19
-    CURSOR_B = 20
-    CHECKBOX_UNCHECKED = 21
-    CHECKBOX_CHECKED = 22
-    MENU_HINT = 26
-    EPISODE_1 = 38
-    EPISODE_2 = 39
-    EPISODE_3 = 40
-    EPISODE_4 = 41
-    EPISODE_5 = 42
-    EPISODE_6 = 43
-    TITLE_SCREEN = 93
-    PC13_LOGO = 94
-    CREDITS_SCREEN = 95
-
-enum Color : uint8
-    RED_VERY_DARK = 47u8
-    RED_DARK = 46u8
-    RED_BACKGROUND = 45u8
-    RED_4 = 44u8
-    RED_5 = 43u8
-    RED_6 = 42u8
-    RED_7 = 41u8
-    RED_8 = 40u8
-    RED_9 = 39u8
-    RED_10 = 4u8
-    RED_11 = 38u8
-    RED_12 = 37u8
-    RED_13 = 36u8
-    RED_14 = 35u8
-    RED_15 = 34u8
-    RED_16 = 33u8
-    RED_17 = 32u8
-    LIGHT_CYAN = 3u8
-    LIGHT_GREY = 7u8
-    VERY_LIGHT_GREY = 16u8
-    DARK_GREY = 8u8
-    BACKGROUND_RED = 45u8
-    YELLOW = 71u8
-    DARK_YELLOW = 6u8
-    BRIGHT_YELLOW = 235u8
-    VERY_DARK_BLUE = 227u8
-
-var splashTimer = 0.
+// -------------------------------- HUD --------------------------------
 
 def defaultSplash ( _dt:float )
     let dt = min(_dt,1./60.)
@@ -2893,24 +2902,32 @@ let mainMenuOptions <- [{MenuOption
     text="Quit", icon=PictureIndex NONE;
 }]
 
-def mainMenu ( dt:float; var bmp:Bitmap8# )
+let episodeOptions <- [{MenuOption
+    text="Escape from Wolfenstein", icon=PictureIndex EPISODE_1;
+    text="Operation: Eisenfaust", icon=PictureIndex EPISODE_2;
+    text="Die, Fuhrer, Die!", icon=PictureIndex EPISODE_3;
+    text="A Dark Secret", icon=PictureIndex EPISODE_4;
+    text="Trail of the Madman", icon=PictureIndex EPISODE_5;
+    text="Confrontation", icon=PictureIndex EPISODE_6;
+}]
+
+let difficultyOptions <- [{MenuOption
+    text="Can I play, Daddy?", icon = PictureIndex DIFFICULTY_1;
+    text="Don't hurt me.", icon = PictureIndex DIFFICULTY_2;
+    text="Bring 'em on!", icon = PictureIndex DIFFICULTY_3;
+    text="I am Death incarnate!", icon = PictureIndex DIFFICULTY_4;
+}]
+
+def runMenu ( dt:float; var selection:int&; menuOptions:array<MenuOption> )
     cursorTimer = (cursorTimer + dt * frame_time) % 1.
-    updatePalette()
-    beforeDraw(bmp)
     if dLevelFade == 0.
         if application.upButtonPressed
-            mainMenuSelection = max(0,mainMenuSelection-1)
+            selection = max(0,selection-1)
         if application.downButtonPressed
-            mainMenuSelection = min(mainMenuOptions|>length-1,mainMenuSelection+1)
+            selection = min(mainMenuOptions|>length-1,selection+1)
         if application.okButtonPressed
+            play_game_sound(SoundName ATKPISTOLSND)
             dLevelFade = -LEVEL_FADE_FACTOR
-    rast_fillRect(bmp,0,0,bmp.size.x,bmp.size.y,uint8(Color RED_BACKGROUND))
-    assume opic = Pictures[int(PictureIndex OPTIONS)]
-    rast_fillRect(bmp,0,0,bmp.size.x,bmp.size.y,opic.texels[0])
-    drawHUDElement(160-opic.width/2, 20, opic.width,opic.height,opic,bmp)
-    drawHUDSubElement(0,20,160-opic.width/2,opic.height,0,0,2,opic.height,opic,bmp)
-    drawHUDSubElement(160+opic.width/2,20,(320-opic.width)/2,opic.height,0,0,2,opic.height,opic,bmp)
-    drawMenu(mainMenuSelection,mainMenuOptions, Fonts[1], dt, bmp)
 
 def drawMenu ( menuSelection:int; menuOptions:array<MenuOption>; var font:Font; dt:float; var bmp:Bitmap8# )
     assume hpic = Pictures[int(PictureIndex MENU_HINT)]
@@ -2940,26 +2957,22 @@ def drawMenu ( menuSelection:int; menuOptions:array<MenuOption>; var font:Font; 
             y += pic.height/2 - font.height/2
         drawFontText(x,y,opt.text,bmp,font)
 
-let episodeOptions <- [{MenuOption
-    text="Escape from Wolfenstein", icon=PictureIndex EPISODE_1;
-    text="Operation: Eisenfaust", icon=PictureIndex EPISODE_2;
-    text="Die, Fuhrer, Die!", icon=PictureIndex EPISODE_3;
-    text="A Dark Secret", icon=PictureIndex EPISODE_4;
-    text="Trail of the Madman", icon=PictureIndex EPISODE_5;
-    text="Confrontation", icon=PictureIndex EPISODE_6;
-}]
-
-def episodeMenu ( dt:float; var bmp:Bitmap8# )
-    cursorTimer = (cursorTimer + dt * frame_time) % 1.
+def mainMenu ( dt:float; var bmp:Bitmap8# )
     updatePalette()
     beforeDraw(bmp)
-    if dLevelFade == 0.
-        if application.upButtonPressed
-            episodeMenuSelection = max(0,episodeMenuSelection-1)
-        if application.downButtonPressed
-            episodeMenuSelection = min(episodeOptions|>length-1,episodeMenuSelection+1)
-        if application.okButtonPressed
-            dLevelFade = -LEVEL_FADE_FACTOR
+    runMenu(dt,mainMenuSelection,mainMenuOptions)
+    rast_fillRect(bmp,0,0,bmp.size.x,bmp.size.y,uint8(Color RED_BACKGROUND))
+    assume opic = Pictures[int(PictureIndex OPTIONS)]
+    rast_fillRect(bmp,0,0,bmp.size.x,bmp.size.y,opic.texels[0])
+    drawHUDElement(160-opic.width/2, 20, opic.width,opic.height,opic,bmp)
+    drawHUDSubElement(0,20,160-opic.width/2,opic.height,0,0,2,opic.height,opic,bmp)
+    drawHUDSubElement(160+opic.width/2,20,(320-opic.width)/2,opic.height,0,0,2,opic.height,opic,bmp)
+    drawMenu(mainMenuSelection,mainMenuOptions, Fonts[1], dt, bmp)
+
+def episodeMenu ( dt:float; var bmp:Bitmap8# )
+    updatePalette()
+    beforeDraw(bmp)
+    runMenu(dt,episodeMenuSelection,episodeOptions)
     rast_fillRect(bmp,0,0,bmp.size.x,bmp.size.y,uint8(Color RED_BACKGROUND))
     assume opic = Pictures[int(PictureIndex OPTIONS)]
     rast_fillRect(bmp,0,0,bmp.size.x,bmp.size.y,opic.texels[0])
@@ -2969,19 +2982,20 @@ def episodeMenu ( dt:float; var bmp:Bitmap8# )
     let fdim = getFontTextDim(text,Fonts[1])
     drawFontText(160-fdim.width/2, 3, text, bmp, Fonts[1])
 
+def difficultyMenu ( dt:float; var bmp:Bitmap8# )
+    updatePalette()
+    beforeDraw(bmp)
+    runMenu(dt,difficultyMenuSelection,difficultyOptions)
+    rast_fillRect(bmp,0,0,bmp.size.x,bmp.size.y,uint8(Color RED_BACKGROUND))
+    assume opic = Pictures[int(PictureIndex OPTIONS)]
+    rast_fillRect(bmp,0,0,bmp.size.x,bmp.size.y,opic.texels[0])
+    drawMenu(difficultyMenuSelection,difficultyOptions, Fonts[0], dt, bmp)
+    setFontColor(uint8(Color YELLOW),Fonts[1])
+    let text = "How tough are you?"
+    let fdim = getFontTextDim(text,Fonts[1])
+    drawFontText(160-fdim.width/2, 3, text, bmp, Fonts[1])
 
 // ------------------------------------------------------------
-
-/*
-def lookup_colors
-    for c in range(256)
-        let col = GamePalette[c]
-        let b = (col & 0xff0000) >> 16u
-        let g = (col & 0xff00) >> 8u
-        let r = (col & 0xff)
-        if b==0u && g==0u
-            print("RED_{c} {r} {g} {b}\n")
-*/
 
 def wolf3d_setGameMode ( mode:GameMode )
     gameMode = mode
@@ -2992,7 +3006,7 @@ def woof3d_main ( app:Application? )
     application = app
     InitFiles()
     setFontColor(uint8(Color BRIGHT_YELLOW),Fonts[0])
-    setupLevel(0)
+    // setupLevel(0)
     levelFade = 0.
     dLevelFade = LEVEL_FADE_FACTOR
     wolf3d_setGameMode(GameMode loadScreen0)
@@ -3010,6 +3024,8 @@ def woof3d_update ( dt:float; var backbuffer:Bitmap8# )
         mainMenu(dt, backbuffer)
     elif gameMode == GameMode episodeMenu
         episodeMenu(dt, backbuffer)
+    elif gameMode == GameMode difficultyMenu
+        difficultyMenu(dt, backbuffer)
     elif gameMode == GameMode playing
         updateGame(dt)
         draw(level, backbuffer)

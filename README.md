@@ -26,9 +26,11 @@ TODO: in no particular order
 * high-score table
 * UI
 * add links to all the sources i was looking at, while developing the demo
+* music
 
 Things I've been looking at:
 
+https://github.com/id-Software/wolf3d
 https://github.com/vpoupet/wolfenstein
 
 

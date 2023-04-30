@@ -845,6 +845,15 @@ def isBluePacManGhost(m1:int)
 
 // -------------------- gameplay --------------------
 
+enum GameMode
+    loadScreen0 // red, with mouse\mem
+    loadScreen1 // rating
+    loadScreen2 // title
+    loadScreen3 // credits
+    playing
+
+var gameMode = GameMode loadScreen0
+
 var frame_time = 0.66
 
 let CHEAT_DISABLE_ENEMIES = false
@@ -858,6 +867,7 @@ let AGRO_TIME = 20.         // they stay agro even if they can't see you for tha
 
 let LEVEL_FADE_TIME = 1.
 let LEVEL_FADE_FACTOR = 1.0 / LEVEL_FADE_TIME / 60.
+let DEFAULT_SPLASH_TIMER = 3.
 
 let PAIN_SOUND_RADIUS = 64.
 let SHOT_SOUND_RADIUS = 64.
@@ -1814,6 +1824,17 @@ def heartbeat(x:float)
     let s2 = sin(4.*p_x)
     return clamp ( s1*0.9 + s2*0.1 + 0.1, 0., 1.)
 
+def nextGameMode
+    if gameMode==GameMode loadScreen0
+        gameMode = GameMode loadScreen1
+    elif gameMode == GameMode loadScreen1
+        gameMode = GameMode loadScreen2
+    elif gameMode == GameMode loadScreen2
+        gameMode = GameMode loadScreen3
+    elif gameMode == GameMode loadScreen3
+        gameMode = GameMode playing
+    splashTimer = DEFAULT_SPLASH_TIMER
+
 def updatePalette
     // udpate flash
     if flashTime > 0.
@@ -1837,8 +1858,11 @@ def updatePalette
             dLevelFade = 0.
             levelFade = 1.
         elif dLevelFade < 0. && levelFade <= 0.
-            levelIndex = nextLevelIndex
-            setupLevel(nextLevelIndex)
+            if gameMode == GameMode playing
+                levelIndex = nextLevelIndex
+                setupLevel(nextLevelIndex)
+            else
+                nextGameMode()
             levelFade = 0.
             dLevelFade = LEVEL_FADE_FACTOR
     elif (player.health>0 && player.health <= 25) || flashTime > 0.
@@ -2486,7 +2510,7 @@ def drawSprite ( x,y: int; h:float; dist:float; sprite:SpriteTexture; var bmp:Bi
                         pixelOffset += endRow - startRow
             uvX += dUVX
 
-def draw2DElement ( x,y,w,h:int; var pic:Picture; var bmp:Bitmap8# )
+def draw2DElement ( x,y,w,h:int; var pic:Picture; var bmp:Bitmap8#; masked:bool = false )
     var u = 0.
     let du = 1. / float(w+1)
     let dv = 1. / float(h+1)
@@ -2494,18 +2518,24 @@ def draw2DElement ( x,y,w,h:int; var pic:Picture; var bmp:Bitmap8# )
     lock(pic.data) <| $ ( tspan )
         for X in range(x,x+w)
             let px = floori(u * float(pic.width))
-            rast_hspan_u8(bmp.data,y+X*bmp.size.y,tspan,px*pic.height,0.,DV,h)
+            if masked
+                rast_hspan_masked_u8(bmp.data,y+X*bmp.size.y,tspan,px*pic.height,0.,DV,h)
+            else
+                rast_hspan_u8(bmp.data,y+X*bmp.size.y,tspan,px*pic.height,0.,DV,h)
             u += du
 
-def drawMasked2DElement ( x,y,w,h:int; var pic:Picture; var bmp:Bitmap8# )
+def draw2DSubElement ( x,y,w,h:int; x0,y0,x1,y1:int; var pic:Picture; var bmp:Bitmap8#; masked:bool = false )
     var u = 0.
-    let du = 1. / float(w+1)
-    let dv = 1. / float(h+1)
+    let du = float(x1-x0) / float(pic.width) / float(w)
+    let dv = float(y1-y0) / float(pic.height) / float(h)
     var DV = dv * float(pic.height)
     lock(pic.data) <| $ ( tspan )
         for X in range(x,x+w)
             let px = floori(u * float(pic.width))
-            rast_hspan_masked_u8(bmp.data,y+X*bmp.size.y,tspan,px*pic.height,0.,DV,h)
+            if masked
+                rast_hspan_masked_u8(bmp.data,y+X*bmp.size.y,tspan,px*pic.height+y0,0.,DV,h)
+            else
+                rast_hspan_u8(bmp.data,y+X*bmp.size.y,tspan,px*pic.height+y0,0.,DV,h)
             u += du
 
 def drawBackground ( var bmp:Bitmap8# )
@@ -2523,19 +2553,35 @@ def drawWeapon ( var bmp:Bitmap8# )
             Sprites[player.weaponSprite],
             bmp)
 
-var hudFactor = 1.
+var hudFactor = float2(1.)
 
-def drawHUDElement(x,y,w,h:int; var pic:Picture; var bmp:Bitmap8#; masked:bool=false )
-    var minx = max(floori(float(x)*hudFactor), 0)
-    var maxx = min(floori(float(x+w)*hudFactor), bmp.size.x)
-    var miny = max(floori(float(y)*hudFactor), 0)
-    var maxy = min(floori(float(y+h)*hudFactor), bmp.size.y)
+def fillHUDRect(x,y,w,h:int; col:uint8; var bmp:Bitmap8# )
+    var minx = max(floori(float(x)*hudFactor.x), 0)
+    var maxx = min(floori(float(x+w)*hudFactor.x), bmp.size.x)
+    var miny = max(floori(float(y)*hudFactor.y), 0)
+    var maxy = min(floori(float(y+h)*hudFactor.y), bmp.size.y)
     if minx>maxx || miny>maxy
         return
-    if masked
-        drawMasked2DElement(minx,miny,maxx-minx,maxy-miny,pic,bmp)
-    else
-        draw2DElement(minx,miny,maxx-minx,maxy-miny,pic,bmp)
+    rast_fillRect(bmp,minx,miny,maxx-minx,maxy-miny,col)
+
+def drawHUDElement(x,y,w,h:int; var pic:Picture; var bmp:Bitmap8#; masked:bool=false )
+    var minx = max(floori(float(x)*hudFactor.x), 0)
+    var maxx = min(floori(float(x+w)*hudFactor.x), bmp.size.x)
+    var miny = max(floori(float(y)*hudFactor.y), 0)
+    var maxy = min(floori(float(y+h)*hudFactor.y), bmp.size.y)
+    if minx>maxx || miny>maxy
+        return
+    draw2DElement(minx,miny,maxx-minx,maxy-miny,pic,bmp,masked)
+
+def drawHUDSubElement(x,y,w,h:int; x0,y0,x1,y1:int; var pic:Picture; var bmp:Bitmap8#; masked:bool=false )
+    // TODO: fix clipping
+    var minx = max(floori(float(x)*hudFactor.x), 0)
+    var maxx = min(floori(float(x+w)*hudFactor.x), bmp.size.x)
+    var miny = max(floori(float(y)*hudFactor.y), 0)
+    var maxy = min(floori(float(y+h)*hudFactor.y), bmp.size.y)
+    if minx>maxx || miny>maxy
+        return
+    draw2DSubElement(minx,miny,maxx-minx,maxy-miny,x0,y0,x1,y1,pic,bmp,masked)
 
 def drawHUDNum(x,y:int; num:int; var bmp:Bitmap8# )
     let txt = "{num}"
@@ -2655,11 +2701,14 @@ def drawMap ( var bmp:Bitmap8# )
             rast_fillRect(bmp, bmp.size.x/2 - 32*4 - 10 + floori(e.pos.x)*4,10 + floori(e.pos.y)*4,4,4,32u8)
     rast_fillRect(bmp, bmp.size.x/2 - 32*4 - 10 + floori(player.pos.x)*4,10 + floori(player.pos.y)*4,4,4,15u8)
 
-def draw ( level:Level; var bmp:Bitmap8# )
-    hudFactor = max(float(bmp.size.y)/200.,1.)
+def beforeDraw ( var bmp:Bitmap8# )
+    hudFactor = max(float2(bmp.size)/float2(320.,200.),float2(1.))
     pixelWidth = float(bmp.size.x)
     pixelHeight = float(bmp.size.y)
     wallHeight = float(pixelWidth) / (2. * fov)
+
+def draw ( level:Level; var bmp:Bitmap8# )
+    beforeDraw(bmp)
     zIndex |> resize(bmp.size.x)
     for vy in visibility_plane
         for v in vy
@@ -2684,19 +2733,153 @@ def draw ( level:Level; var bmp:Bitmap8# )
         let dim = getFontTextDim(text,Fonts[0])
         drawFontText(160-dim.width/2,200-16,text,bmp,Fonts[0])
 
+enum Picture
+    WOFLENSTEIN = 10
+    ID_LOGO = 13
+    CHECKBOX_UNCHECKED = 21
+    CHECKBOX_CHECKED = 22
+    TITLE_SCREEN = 93
+    PC13_LOGO = 94
+    CREDITS_SCREEN = 95
+
+enum Color : uint8
+    RED_VERY_DARK = 47u8
+    RED_DARK = 46u8
+    RED_BACKGROUND = 45u8
+    RED_4 = 44u8
+    RED_5 = 43u8
+    RED_6 = 42u8
+    RED_7 = 41u8
+    RED_8 = 40u8
+    RED_9 = 39u8
+    RED_10 = 4u8
+    RED_11 = 38u8
+    RED_12 = 37u8
+    RED_13 = 36u8
+    RED_14 = 35u8
+    RED_15 = 34u8
+    RED_16 = 33u8
+    RED_17 = 32u8
+    LIGHT_CYAN = 3u8
+    LIGHT_GREY = 7u8
+    DARK_GREY = 8u8
+    BACKGROUND_RED = 45u8
+    BRIGHT_YELLOW = 235u8
+    VERY_DARK_BLUE = 227u8
+
+var splashTimer = 0.
+
+def defaultSplash ( _dt:float )
+    let dt = min(_dt,1./60.)
+    splashTimer -= dt * frame_time
+    if splashTimer < 0.
+        splashTimer = 0.
+        dLevelFade = -LEVEL_FADE_FACTOR
+
+def loadScreen0 ( dt:float; var bmp:Bitmap8# )
+    defaultSplash(dt)
+    updatePalette()
+    beforeDraw(bmp)
+    rast_fillRect(bmp,0,0,bmp.size.x,bmp.size.y,uint8(Color RED_5))
+    fillHUDRect(10,70,140,106,uint8(Color RED_BACKGROUND),bmp)
+    assume wpic = Pictures[int(Picture WOFLENSTEIN)]
+    drawHUDSubElement(
+        160-wpic.width/2,10,wpic.width,wpic.height,
+        0,0,wpic.width-5,wpic.height-9,
+        wpic,bmp)
+    assume lpic = Pictures[int(Picture ID_LOGO)]
+    drawHUDSubElement(
+        10,10,lpic.width,lpic.height,
+        0,0,lpic.width-2,lpic.height,
+        lpic,bmp)
+    drawHUDSubElement(
+        320-lpic.width-10,10,lpic.width,lpic.height,
+        0,0,lpic.width-2,lpic.height,
+        lpic,bmp)
+    assume font = Fonts[0]
+    setFontColor(uint8(Color VERY_DARK_BLUE),font)
+    let text = "Powered by daScript"
+    let dim = getFontTextDim(text,font)
+    drawFontText(160-dim.width/2,200-dim.height-2,text,bmp,font)
+    setFontColor(uint8(Color LIGHT_CYAN),font)
+    drawFontText(15,75,"ALLOCATED MEMORY",bmp,font)
+    setFontColor(uint8(Color LIGHT_GREY),font)
+    let hba = heap_bytes_allocated()
+    drawFontText(15,90,"{int64(hba)} heap",bmp,font)
+    assume fontr = Fonts[0]
+    setFontColor(uint8(Color LIGHT_GREY),fontr)
+    assume cbpic = Pictures[int(Picture CHECKBOX_CHECKED)]
+    let iH = 22
+    let i0 = 70
+    for i in range(5)
+        fillHUDRect(160+10,i0+i*iH,140,iH-4,uint8(Color RED_BACKGROUND),bmp)
+        drawHUDSubElement(
+            160+15,i0+5+i*iH,cbpic.width,cbpic.height,
+            0,0,cbpic.width,cbpic.height,
+            cbpic,bmp)
+        drawFontText(160+10+cbpic.width+5,i0+4+i*iH,"MOUSE",bmp,fontr)
+
+def loadScreen1 ( dt:float; var bmp:Bitmap8# )
+    defaultSplash(dt)
+    updatePalette()
+    beforeDraw(bmp)
+    assume lpic = Pictures[int(Picture PC13_LOGO)]
+    rast_fillRect(bmp,0,0,bmp.size.x,bmp.size.y,lpic.texels[0])
+    drawHUDElement(320-lpic.width-20, 200-lpic.height-30,lpic.width,lpic.height,lpic,bmp)
+
+def loadScreen2 ( dt:float; var bmp:Bitmap8# )
+    defaultSplash(dt)
+    updatePalette()
+    beforeDraw(bmp)
+    assume lpic = Pictures[int(Picture TITLE_SCREEN)]
+    drawHUDElement(0,0,lpic.width,lpic.height,lpic,bmp)
+
+def loadScreen3 ( dt:float; var bmp:Bitmap8# )
+    defaultSplash(dt)
+    updatePalette()
+    beforeDraw(bmp)
+    assume lpic = Pictures[int(Picture CREDITS_SCREEN)]
+    drawHUDElement(0,0,lpic.width,lpic.height,lpic,bmp)
+
+
 // ------------------------------------------------------------
 
+/*
+def lookup_colors
+    for c in range(256)
+        let col = GamePalette[c]
+        let b = (col & 0xff0000) >> 16u
+        let g = (col & 0xff00) >> 8u
+        let r = (col & 0xff)
+        if b==0u && g==0u
+            print("RED_{c} {r} {g} {b}\n")
+*/
+
+def wolf3d_setGameMode ( mode:GameMode )
+    gameMode = mode
+    splashTimer = DEFAULT_SPLASH_TIMER
+
 def woof3d_main ( app:Application? )
+    // lookup_colors()
     application = app
     InitFiles()
-    setFontColor(71u8,Fonts[0])
+    setFontColor(uint8(Color BRIGHT_YELLOW),Fonts[0])
     setupLevel(0)
     levelFade = 0.
     dLevelFade = LEVEL_FADE_FACTOR
-    play_game_sound(SoundName SLURPIESND)
+    wolf3d_setGameMode(GameMode loadScreen0)
 
 def woof3d_update ( dt:float; var backbuffer:Bitmap8# )
-    updateGame(dt)
-    draw(level, backbuffer)
-    application->set_app_sound_position(player.pos, player.dir)
+    if gameMode == GameMode loadScreen0
+        loadScreen0(dt, backbuffer)
+    elif gameMode == GameMode loadScreen1
+        loadScreen1(dt, backbuffer)
+    elif gameMode == GameMode loadScreen2
+        loadScreen2(dt, backbuffer)
+    elif gameMode == GameMode loadScreen3
+        loadScreen3(dt, backbuffer)
+    elif gameMode == GameMode playing
+        updateGame(dt)
+        draw(level, backbuffer)
+        application->set_app_sound_position(player.pos, player.dir)
 

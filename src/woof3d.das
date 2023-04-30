@@ -568,142 +568,41 @@ def InitFiles
 // -------------------- sound system --------------------
 
 enum SoundName
-    NONE = -1
-    ACHTUNG =                0
-    DOGBARK =                2
-    OPENDOORSND =            3
-    CLOSEDOORSND =           8
-    ATKMACHINEGUNSND =       11
-    ATKPISTOLSND =           12
-    ATKGATLINGSND =          13
-	SCHUTZADSND =            14
-	GUTENTAGSND =            16
-	MUTTISND =               18
-	BOSSFIRESND =            20                 // note: this sound keeps going, even though its 4096 bytes long
-	SSFIRESND =              23
-    DEATHSCREAM1SND =        25
-    DEATHSCREAM2SND =        26
-    DEATHSCREAM3SND =        27
-    TAKEDAMAGESND =          28
-    PUSHWALLSND =            35         // test this?
-    AHHHGSND =               36
-    DIESND =                 38
-    EVASND =                 41
-    LEBENSND =               45
-    NAZIFIRESND =            47
-    SLURPIESND =             50
-    TOT_HUNDSND =            53
-    MEINGOTTSND =            55
-    SCHABBSHASND =           62
-    HITLERHASND =            66
-    SPIONSND =               70
-    NEINSOVASSND =           72
-    DOGATTACKSND =           75
-    LEVELDONESND =           77
-    MECHSTEPSND =            79
-    YEAHSND =                81
-    SCHEISTSND =             83
-    DEATHSCREAM4SND =        85
-    DEATHSCREAM5SND =        87
-    DONNERSND =              89                     // EPISODE 4 BOSS DIE
-    EINESND =                92                     // EPISODE 4 BOSS SIGHTING
-    ERLAUBENSND =            97                     // EPISODE 6 BOSS SIGHTING
-    DEATHSCREAM6SND =        103                    // FART
-    FART =                   103
-    DEATHSCREAM7SND =        104                    // GASP
-    DEATHSCREAM8SND =        106                    // GUH-BOY
-	DEATHSCREAM9SND =        108                    // AH GEEZ!
-    KEINSND =                110                    // EPISODE 5 BOSS SIGHTING
-    MEINSND =                113                    // EPISODE 6 BOSS DIE
-    ROSESND =                116                    // EPISODE 5 BOSS DIE
+    NONE =                  -1;     ACHTUNG =                0;     DOGBARK =                2;     OPENDOORSND =            3;
+    CLOSEDOORSND =           8;     ATKMACHINEGUNSND =       11;    ATKPISTOLSND =           12;    ATKGATLINGSND =          13;
+	SCHUTZADSND =            14;    GUTENTAGSND =            16;    MUTTISND =               18;    BOSSFIRESND =            20;
+	SSFIRESND =              23;    DEATHSCREAM1SND =        25;    DEATHSCREAM2SND =        26;    DEATHSCREAM3SND =        27;
+    TAKEDAMAGESND =          28;    PUSHWALLSND =            35;    AHHHGSND =               36;    DIESND =                 38;
+    EVASND =                 41;    LEBENSND =               45;    NAZIFIRESND =            47;    SLURPIESND =             50;
+    TOT_HUNDSND =            53;    MEINGOTTSND =            55;    SCHABBSHASND =           62;    HITLERHASND =            66;
+    SPIONSND =               70;    NEINSOVASSND =           72;    DOGATTACKSND =           75;    LEVELDONESND =           77;
+    MECHSTEPSND =            79;    YEAHSND =                81;    SCHEISTSND =             83;    DEATHSCREAM4SND =        85;
+    DEATHSCREAM5SND =        87;    DONNERSND =              89;    EINESND =                92;    ERLAUBENSND =            97;
+    DEATHSCREAM6SND =        103;   FART =                   103;   DEATHSCREAM7SND =        104;   DEATHSCREAM8SND =        106;
+	DEATHSCREAM9SND =        108;   KEINSND =                110;   MEINSND =                113;   ROSESND =                116;
 // audio
-    HITWALLSND = 1000       // 0
-    SELECTWPNSND            // 1
-    SELECTITEMSND           // 2
-    HEARTBEATSND            // 3
-    MOVEGUN2SND             // 4
-    MOVEGUN1SND             // 5
-    NOWAYSND                // 6
-    NAZIHITPLAYERSND        // 7
-    SCHABBSTHROWSND         // 8
-    PLAYERDEATHSND          // 9
-    DOGDEATHSND             // 10
-    ATKGATLINGSND_          // 11
-    GETKEYSND               // 12
-    NOITEMSND               // 13
-    WALK1SND                // 14
-    WALK2SND                // 15
-    TAKEDAMAGESND_          // 16
-    GAMEOVERSND             // 17
-    OPENDOORSND_            // 18
-    CLOSEDOORSND_           // 19
-    DONOTHINGSND            // 20
-    HALTSND                 // 21
-    DEATHSCREAM2SND_        // 22
-    ATKKNIFESND             // 23
-    ATKPISTOLSND_           // 24
-    DEATHSCREAM3SND_        // 25
-    ATKMACHINEGUNSND_       // 26
-    HITENEMYSND             // 27
-    SHOOTDOORSND            // 28
-    DEATHSCREAM1SND_        // 29
-    GETMACHINESND           // 30
-    GETAMMOSND              // 31
-    SHOOTSND                // 32
-    HEALTH1SND              // 33
-    HEALTH2SND              // 34
-    BONUS1SND               // 35
-    BONUS2SND               // 36
-    BONUS3SND               // 37
-    GETGATLINGSND           // 38
-    ESCPRESSEDSND           // 39
-    LEVELDONESND_           // 40
-    DOGBARKSND              // 41
-    ENDBONUS1SND            // 42
-    ENDBONUS2SND            // 43
-    BONUS1UPSND             // 44
-    BONUS4SND               // 45
-    PUSHWALLSND_            // 46
-    NOBONUSSND              // 47
-    PERCENT100SND           // 48
-    BOSSACTIVESND           // 49
-    MUTTISND_               // 50
-    SCHUTZADSND_            // 51
-    AHHHGSND_               // 52
-    DIESND_                 // 53
-    EVASND_                 // 54
-    GUTENTAGSND_            // 55
-    LEBENSND_               // 56
-    SCHEISTSND_             // 57
-    NAZIFIRESND_            // 58
-    BOSSFIRESND_            // 59
-    SSFIRESND_              // 60
-    SLURPIESND_             // 61
-    TOT_HUNDSND_            // 62
-    MEINGOTTSND_            // 63
-    SCHABBSHASND_           // 64
-    HITLERHASND_            // 65
-    SPIONSND_               // 66
-    NEINSOVASSND_           // 67
-    DOGATTACKSND_           // 68
-    FLAMETHROWERSND         // 69
-    MECHSTEPSND_            // 70
-    GOOBSSND                // 71
-    YEAHSND_                // 72
-    DEATHSCREAM4SND_        // 73
-    DEATHSCREAM5SND_        // 74
-    DEATHSCREAM6SND_        // 75
-    DEATHSCREAM7SND_        // 76
-    DEATHSCREAM8SND_        // 77
-    DEATHSCREAM9SND_        // 78
-    DONNERSND_              // 79
-    EINESND_                // 80
-    ERLAUBENSND_            // 81
-    KEINSND_                // 82
-    MEINSND_                // 83
-    ROSESND_                // 84
-    MISSILEFIRESND          // 85
-    MISSILEHITSND           // 86
+    HITWALLSND = 1000;              SELECTWPNSND;                   SELECTITEMSND;                  HEARTBEATSND;
+    MOVEGUN2SND;                    MOVEGUN1SND;                    NOWAYSND;                       NAZIHITPLAYERSND;
+    SCHABBSTHROWSND;                PLAYERDEATHSND;                 DOGDEATHSND;                    ATKGATLINGSND_;
+    GETKEYSND;                      NOITEMSND;                      WALK1SND;                       WALK2SND;
+    TAKEDAMAGESND_;                 GAMEOVERSND;                    OPENDOORSND_;                   CLOSEDOORSND_;
+    DONOTHINGSND;                   HALTSND;                        DEATHSCREAM2SND_;               ATKKNIFESND;
+    ATKPISTOLSND_;                  DEATHSCREAM3SND_;               ATKMACHINEGUNSND_;              HITENEMYSND;
+    SHOOTDOORSND;                   DEATHSCREAM1SND_;               GETMACHINESND;                  GETAMMOSND;
+    SHOOTSND;                       HEALTH1SND;                     HEALTH2SND;                     BONUS1SND;
+    BONUS2SND;                      BONUS3SND;                      GETGATLINGSND;                  ESCPRESSEDSND;
+    LEVELDONESND_;                  DOGBARKSND;                     ENDBONUS1SND;                   ENDBONUS2SND;
+    BONUS1UPSND;                    BONUS4SND;                      PUSHWALLSND_;                   NOBONUSSND;
+    PERCENT100SND;                  BOSSACTIVESND;                  MUTTISND_;                      SCHUTZADSND_;
+    AHHHGSND_;                      DIESND_;                        EVASND_;                        GUTENTAGSND_;
+    LEBENSND_;                      SCHEISTSND_;                    NAZIFIRESND_;                   BOSSFIRESND_;
+    SSFIRESND_;                     SLURPIESND_;                    TOT_HUNDSND_;                   MEINGOTTSND_;
+    SCHABBSHASND_;                  HITLERHASND_;                   SPIONSND_;                      NEINSOVASSND_;
+    DOGATTACKSND_;                  FLAMETHROWERSND;                MECHSTEPSND_;                   GOOBSSND;
+    YEAHSND_;                       DEATHSCREAM4SND_;               DEATHSCREAM5SND_;               DEATHSCREAM6SND_;
+    DEATHSCREAM7SND_;               DEATHSCREAM8SND_;               DEATHSCREAM9SND_;               DONNERSND_;
+    EINESND_;                       ERLAUBENSND_;                   KEINSND_;                       MEINSND_;
+    ROSESND_;                       MISSILEFIRESND;                 MISSILEHITSND;
 
 def get_sound_data ( name:SoundName; max_seq:int=INT_MAX )
     var index = int(name)
@@ -736,44 +635,18 @@ def play_game_sound ( name:SoundName; rate:int=SOUND_SAMPLE_RATE )
 // -------------------- entities --------------------
 
 enum Collectible
-    DogFood = 29
-    KeyGold = 43
-    KeySilver = 44
-    Food = 47
-    Medkit = 48
-    AmmoClip = 49
-    MachineGun = 50
-    Chaingun = 51
-    TreasureCross = 52
-    TreasureChalice = 53
-    TreasureChest = 54
-    TreasureCrown = 55
-    LifeUp = 56
-    SkeletonBlood = 57
-    Blood = 61
+    DogFood = 29;           KeyGold = 43;           KeySilver = 44;         Food = 47;
+    Medkit = 48;            AmmoClip = 49;          MachineGun = 50;        Chaingun = 51;
+    TreasureCross = 52;     TreasureChalice = 53;   TreasureChest = 54;     TreasureCrown = 55;
+    LifeUp = 56;            SkeletonBlood = 57;     Blood = 61;
 
 enum Props
-    GreenBarrel = 24
-    TableAndChairs = 25
-    FloorLamp = 26
-    HangedSkeleton = 28
-    WhitePillar = 30
-    Tree = 31
-    Sink = 33
-    PottedPlant = 34
-    Urn = 35
-    BareTable = 36
-    SuitOfArmor = 39
-    HangingCage = 40
-    SkeletonInCage = 41
-    Bed = 45
-    Barrel = 58
-    Well = 59
-    EmptyWell = 60
-    Flag = 62
-    CallApogee = 63
-    Stove = 68
-    Spears = 69
+    GreenBarrel = 24;       TableAndChairs = 25;    FloorLamp = 26;         HangedSkeleton = 28;
+    WhitePillar = 30;       Tree = 31;              Sink = 33;              PottedPlant = 34;
+    Urn = 35;               BareTable = 36;         SuitOfArmor = 39;       HangingCage = 40;
+    SkeletonInCage = 41;    Bed = 45;               Barrel = 58;            Well = 59;
+    EmptyWell = 60;         Flag = 62;              CallApogee = 63;        Stove = 68;
+    Spears = 69;
 
 def isKey ( m1:int )
     return m1==43 || m1==44

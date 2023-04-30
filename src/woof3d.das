@@ -45,11 +45,17 @@ class Application
     cheat3 : bool                   // teleport player to interesting place?
     cheatSwitchLevel : bool         // any switch to next level
     cheatSwitchLevelShift : bool    // switch to specific level (shift pressed?)
+    // button pressed
+    okButtonPressed : bool
+    cancelButtonPressed : bool
+    upButtonPressed : bool
+    downButtonPressed : bool
 
     def abstract play_app_sound ( wave:array<float>; freq:int ) : void
     def abstract play_app_sound_2d ( pos:float2; radius:float; wave:array<float>; freq:int ) : void
     def abstract set_palette ( pal : uint[256] ) : void
     def abstract set_app_sound_position ( xy:float2; dxy:float2 ) : void
+    def abstract quit : void
 
 var application : Application?
 
@@ -850,9 +856,13 @@ enum GameMode
     loadScreen1 // rating
     loadScreen2 // title
     loadScreen3 // credits
+    mainMenu    // main menu (new game\save\load\etc)
     playing
 
 var gameMode = GameMode loadScreen0
+
+var cursorTimer = 0.
+var mainMenuSelection = 0
 
 var frame_time = 0.66
 
@@ -1832,7 +1842,13 @@ def nextGameMode
     elif gameMode == GameMode loadScreen2
         gameMode = GameMode loadScreen3
     elif gameMode == GameMode loadScreen3
-        gameMode = GameMode playing
+        gameMode = GameMode mainMenu
+    elif gameMode == GameMode mainMenu
+        if mainMenuSelection == 0           // new game
+            gameMode = GameMode playing
+        elif mainMenuSelection == 5         // quit
+            application->quit()
+        // TODO: support other game modes
     splashTimer = DEFAULT_SPLASH_TIMER
 
 def updatePalette
@@ -2736,8 +2752,12 @@ def draw ( level:Level; var bmp:Bitmap8# )
 enum Picture
     WOFLENSTEIN = 10
     ID_LOGO = 13
+    OPTIONS = 18
+    CURSOR_A = 19
+    CURSOR_B = 20
     CHECKBOX_UNCHECKED = 21
     CHECKBOX_CHECKED = 22
+    MENU_HINT = 26
     TITLE_SCREEN = 93
     PC13_LOGO = 94
     CREDITS_SCREEN = 95
@@ -2762,6 +2782,7 @@ enum Color : uint8
     RED_17 = 32u8
     LIGHT_CYAN = 3u8
     LIGHT_GREY = 7u8
+    VERY_LIGHT_GREY = 16u8
     DARK_GREY = 8u8
     BACKGROUND_RED = 45u8
     BRIGHT_YELLOW = 235u8
@@ -2841,6 +2862,45 @@ def loadScreen3 ( dt:float; var bmp:Bitmap8# )
     assume lpic = Pictures[int(Picture CREDITS_SCREEN)]
     drawHUDElement(0,0,lpic.width,lpic.height,lpic,bmp)
 
+let menuOptions <- [{auto
+    "New Game";
+    "Options";
+    "Load Game";
+    "Save Game";
+    "Read this!";
+    "Quit"
+}]
+
+def mainMenu ( dt:float; var bmp:Bitmap8# )
+    cursorTimer = (cursorTimer + dt * frame_time) % 1.
+    updatePalette()
+    beforeDraw(bmp)
+    if dLevelFade == 0.
+        if application.upButtonPressed
+            mainMenuSelection = max(0,mainMenuSelection-1)
+        if application.downButtonPressed
+            mainMenuSelection = min(menuOptions|>length-1,mainMenuSelection+1)
+        if application.okButtonPressed
+            dLevelFade = -LEVEL_FADE_FACTOR
+    rast_fillRect(bmp,0,0,bmp.size.x,bmp.size.y,uint8(Color RED_BACKGROUND))
+    assume opic = Pictures[int(Picture OPTIONS)]
+    rast_fillRect(bmp,0,0,bmp.size.x,bmp.size.y,opic.texels[0])
+    drawHUDElement(160-opic.width/2, 20, opic.width,opic.height,opic,bmp)
+    drawHUDSubElement(0,20,160-opic.width/2,opic.height,0,0,2,opic.height,opic,bmp)
+    drawHUDSubElement(160+opic.width/2,20,(320-opic.width)/2,opic.height,0,0,2,opic.height,opic,bmp)
+    assume hpic = Pictures[int(Picture MENU_HINT)]
+    drawHUDElement(160-hpic.width/2, 200-hpic.height-5, hpic.width,hpic.height,hpic,bmp)
+    assume cpinc = Pictures[int(cursorTimer<0.5 ? Picture CURSOR_A : Picture CURSOR_B)]
+    fillHUDRect(80,75,160,100,cpinc.texels[0],bmp)
+    assume font = Fonts[1]
+    setFontColor(uint8(Color VERY_LIGHT_GREY),font)
+    for opt,opti in menuOptions,count()
+        let x = 110
+        let y = 80+opti*15
+        drawFontText(x,y,opt,bmp,font)
+        if opti==mainMenuSelection
+            drawHUDElement(x-cpinc.width-5,y+2,cpinc.width,cpinc.height,cpinc,bmp)
+
 
 // ------------------------------------------------------------
 
@@ -2878,6 +2938,8 @@ def woof3d_update ( dt:float; var backbuffer:Bitmap8# )
         loadScreen2(dt, backbuffer)
     elif gameMode == GameMode loadScreen3
         loadScreen3(dt, backbuffer)
+    elif gameMode == GameMode mainMenu
+        mainMenu(dt, backbuffer)
     elif gameMode == GameMode playing
         updateGame(dt)
         draw(level, backbuffer)

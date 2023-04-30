@@ -102,9 +102,15 @@ var cursor_delta_xy : float2
 var mouse_buttons : int
 
 class OpenglApplication : woof3d::Application
+    upButton, prevUpButton : bool
+    downButton, prevDownButton : bool
+    okButton, prevOkButton : bool
+    cancelButton, prevCancelButton : bool
     playing_sounds : PlayingSound[MAX_SOUNDS]
     sound_head_position : float2
     sound_head_direction : float2
+    def override quit : void
+        glfwSetWindowShouldClose(window, GLFW_TRUE)
     def override play_app_sound ( wave:array<float>; freq:int )
         let i = allocate_app_sound()
         if i<0
@@ -193,6 +199,19 @@ class OpenglApplication : woof3d::Application
         cheat3 = glfwGetKey(window, GLFW_KEY_F2)==GLFW_PRESS
         cheatSwitchLevel = glfwGetKey(window, GLFW_KEY_F10)==GLFW_PRESS
         cheatSwitchLevelShift = glfwGetKey(window, GLFW_KEY_LEFT_SHIFT)==GLFW_PRESS || glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT)==GLFW_PRESS
+        // button pressed
+        prevOkButton = okButton
+        prevCancelButton = cancelButton
+        prevUpButton = upButton
+        prevDownButton = downButton
+        okButton = shootButton || activateButton
+        cancelButton = glfwGetKey(window, GLFW_KEY_ESCAPE)==GLFW_PRESS
+        upButton = forwardButton
+        downButton = backwardButton
+        okButtonPressed = okButton && !prevOkButton
+        cancelButtonPressed = cancelButton && !prevCancelButton
+        upButtonPressed = upButton && !prevUpButton
+        downButtonPressed = downButton && !prevDownButton
 
 var window : GLFWwindow?
 

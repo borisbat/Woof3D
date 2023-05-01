@@ -2483,7 +2483,7 @@ def draw2DElement ( x,y,w,h:int; var pic:Picture; var bmp:Bitmap8#; masked:bool 
                 rast_hspan_u8(bmp.data,y+X*bmp.size.y,tspan,px*pic.height,0.,DV,h)
             u += du
 
-def draw2DSubElement ( x,y,w,h:int; x0,y0,x1,y1:int; var pic:Picture; var bmp:Bitmap8#; masked:bool = false )
+def draw2DSubElement ( x,y,w,h:int; x0,y0,x1,y1:int; var pic:Picture; var bmp:Bitmap8# )
     var u = 0.
     let du = float(x1-x0) / float(pic.width) / float(w)
     let dv = float(y1-y0) / float(pic.height) / float(h)
@@ -2491,10 +2491,7 @@ def draw2DSubElement ( x,y,w,h:int; x0,y0,x1,y1:int; var pic:Picture; var bmp:Bi
     lock(pic.data) <| $ ( tspan )
         for X in range(x,x+w)
             let px = floori(u * float(pic.width))
-            if masked
-                rast_hspan_masked_u8(bmp.data,y+X*bmp.size.y,tspan,px*pic.height+y0,0.,DV,h)
-            else
-                rast_hspan_u8(bmp.data,y+X*bmp.size.y,tspan,px*pic.height+y0,0.,DV,h)
+            rast_hspan_u8(bmp.data,y+X*bmp.size.y,tspan,px*pic.height+y0,0.,DV,h)
             u += du
 
 def drawBackground ( var bmp:Bitmap8# )
@@ -2523,24 +2520,18 @@ def fillHUDRect(x,y,w,h:int; col:uint8; var bmp:Bitmap8# )
         return
     rast_fillRect(bmp,minx,miny,maxx-minx,maxy-miny,col)
 
-def drawHUDElement(x,y,w,h:int; var pic:Picture; var bmp:Bitmap8#; masked:bool=false )
-    var minx = max(floori(float(x)*hudFactor.x), 0)
-    var maxx = min(floori(float(x+w)*hudFactor.x), bmp.size.x)
-    var miny = max(floori(float(y)*hudFactor.y), 0)
-    var maxy = min(floori(float(y+h)*hudFactor.y), bmp.size.y)
-    if minx>maxx || miny>maxy
-        return
-    draw2DElement(minx,miny,maxx-minx,maxy-miny,pic,bmp,masked)
+def drawHUDElement(x,y,w,h:int; var pic:Picture; var bmp:Bitmap8# )
+    drawHUDSubElement(x,y,w,h,0,0,w,h,pic,bmp)
 
-def drawHUDSubElement(x,y,w,h:int; x0,y0,x1,y1:int; var pic:Picture; var bmp:Bitmap8#; masked:bool=false )
-    // TODO: fix clipping
+def drawHUDSubElement(x,y,w,h:int; x0,y0,x1,y1:int; var pic:Picture; var bmp:Bitmap8# )
+    // TODO: fix clipping for sub-elements
     var minx = max(floori(float(x)*hudFactor.x), 0)
     var maxx = min(floori(float(x+w)*hudFactor.x), bmp.size.x)
     var miny = max(floori(float(y)*hudFactor.y), 0)
     var maxy = min(floori(float(y+h)*hudFactor.y), bmp.size.y)
     if minx>maxx || miny>maxy
         return
-    draw2DSubElement(minx,miny,maxx-minx,maxy-miny,x0,y0,x1,y1,pic,bmp,masked)
+    draw2DSubElement(minx,miny,maxx-minx,maxy-miny,x0,y0,x1,y1,pic,bmp)
 
 def drawHUDNum(x,y:int; num:int; var bmp:Bitmap8# )
     let txt = "{num}"
@@ -2598,21 +2589,30 @@ def getFontTextDim(text:string; font:Font) : tuple<width:int;height:int>
         X += font.width[chu]
     return [[auto X,font.height]]
 
-def drawFontText(x,y:int; text:string; var bmp:Bitmap8#; var font:Font )
+def draw2DSolidSubElement ( solid:uint8; x,y,w,h:int; x0,y0,x1,y1:int; var pic:Picture; var bmp:Bitmap8# )
+    var u = 0.
+    let du = float(x1-x0) / float(pic.width) / float(w)
+    let dv = float(y1-y0) / float(pic.height) / float(h)
+    var DV = dv * float(pic.height)
+    lock(pic.data) <| $ ( tspan )
+        for X in range(x,x+w)
+            let px = floori(u * float(pic.width))
+            rast_hspan_masked_solid_u8(solid, bmp.data,y+X*bmp.size.y,tspan,px*pic.height+y0,0.,DV,h)
+            u += du
+
+def drawFontText(x,y:int; text:string; color:Color; var bmp:Bitmap8#; var font:Font )
     var X = x
     for chu in text
         let W = font.width[chu]
-        drawHUDElement(X,y,W,font.height,*font.letters[chu],bmp,true)
+        let H = font.height
+        var minx = max(floori(float(X)*hudFactor.x), 0)
+        var maxx = min(floori(float(X+W)*hudFactor.x), bmp.size.x)
+        var miny = max(floori(float(y)*hudFactor.y), 0)
+        var maxy = min(floori(float(y+H)*hudFactor.y), bmp.size.y)
         X += W
-
-def setFontColor ( col:uint8; var font:Font )
-    for Ch in range(256)
-        var pic = font.letters[Ch]
-        if pic==null
+        if minx>maxx || miny>maxy
             continue
-        for p in pic.data
-            if p!=0u8
-                p = col
+        draw2DSolidSubElement(uint8(color),minx,miny,maxx-minx,maxy-miny,0,0,W,H,*font.letters[chu],bmp)
 
 def drawHUD ( var bmp:Bitmap8# )
     // health head (24x32)
@@ -2635,7 +2635,7 @@ def drawHUD ( var bmp:Bitmap8# )
     // hud
     if !empty(hudMessage)
         let dim = getFontTextDim(hudMessage,Fonts[0])
-        drawFontText(160-dim.width/2,2,hudMessage,bmp,Fonts[0])
+        drawFontText(160-dim.width/2,2,hudMessage,Color BRIGHT_YELLOW,bmp,Fonts[0])
 
 def drawDebugVisibility ( var bmp:Bitmap8# )
     for x in range(64)
@@ -2690,7 +2690,7 @@ def draw ( level:Level; var bmp:Bitmap8# )
     if DEBUG_PLAYER_POSITION
         let text = "{floori(player.pos.x)} {floori(player.pos.y)}"
         let dim = getFontTextDim(text,Fonts[0])
-        drawFontText(160-dim.width/2,200-16,text,bmp,Fonts[0])
+        drawFontText(160-dim.width/2,200-16,text,Color YELLOW,bmp,Fonts[0])
 
 // -------------------------------- HUD --------------------------------
 
@@ -2725,17 +2725,13 @@ def loadScreen0 ( dt:float; var bmp:Bitmap8# )
         0,0,lpic.width-2,lpic.height,
         lpic,bmp)
     assume font = Fonts[0]
-    setFontColor(uint8(Color VERY_DARK_BLUE),font)
     let text = "Powered by daScript"
     let dim = getFontTextDim(text,font)
-    drawFontText(160-dim.width/2,200-dim.height-2,text,bmp,font)
-    setFontColor(uint8(Color LIGHT_CYAN),font)
-    drawFontText(15,75,"ALLOCATED MEMORY",bmp,font)
-    setFontColor(uint8(Color LIGHT_GREY),font)
+    drawFontText(160-dim.width/2,200-dim.height-2,text,Color VERY_DARK_BLUE,bmp,font)
+    drawFontText(15,75,"ALLOCATED MEMORY",Color LIGHT_CYAN,bmp,font)
     let hba = heap_bytes_allocated()
-    drawFontText(15,90,"{int64(hba)} heap",bmp,font)
+    drawFontText(15,90,"{int64(hba)} heap",Color LIGHT_GREY,bmp,font)
     assume fontr = Fonts[0]
-    setFontColor(uint8(Color LIGHT_GREY),fontr)
     assume cbpic = Pictures[int(PictureIndex CHECKBOX_CHECKED)]
     let iH = 22
     let i0 = 70
@@ -2745,7 +2741,7 @@ def loadScreen0 ( dt:float; var bmp:Bitmap8# )
             160+15,i0+5+i*iH,cbpic.width,cbpic.height,
             0,0,cbpic.width,cbpic.height,
             cbpic,bmp)
-        drawFontText(160+10+cbpic.width+5,i0+4+i*iH,"MOUSE",bmp,fontr)
+        drawFontText(160+10+cbpic.width+5,i0+4+i*iH,"MOUSE",Color LIGHT_GREY,bmp,fontr)
 
 def loadScreen1 ( dt:float; var bmp:Bitmap8# )
     defaultSplash(dt)
@@ -2823,7 +2819,6 @@ def drawMenu ( menuSelection:int; menuOptions:array<MenuOption>; var font:Font; 
     let minY = 200 - 20 - dim.y * menuOptions|>length
     drawHUDElement(160-hpic.width/2, 200-hpic.height-5, hpic.width,hpic.height,hpic,bmp)
     fillHUDRect(160-dim.x/2-5,minY-5,dim.x+10,190-minY,cpinc.texels[0],bmp)
-    setFontColor(uint8(Color VERY_LIGHT_GREY),font)
     for opt,opti in menuOptions,count()
         var x = 160-dim.x/2
         var y = minY+opti*dim.y
@@ -2835,7 +2830,7 @@ def drawMenu ( menuSelection:int; menuOptions:array<MenuOption>; var font:Font; 
             drawHUDSubElement(x,y,pic.width,pic.height,0,0,pic.width,pic.height,pic,bmp)
             x += pic.width+5
             y += pic.height/2 - font.height/2
-        drawFontText(x,y,opt.text,bmp,font)
+        drawFontText(x,y,opt.text,Color VERY_LIGHT_GREY,bmp,font)
 
 def mainMenu ( dt:float; var bmp:Bitmap8# )
     updatePalette()
@@ -2857,10 +2852,9 @@ def episodeMenu ( dt:float; var bmp:Bitmap8# )
     assume opic = Pictures[int(PictureIndex OPTIONS)]
     rast_fillRect(bmp,0,0,bmp.size.x,bmp.size.y,opic.texels[0])
     drawMenu(episodeMenuSelection,episodeOptions, Fonts[0], dt, bmp)
-    setFontColor(uint8(Color YELLOW),Fonts[1])
     let text = "Which episode to play?"
     let fdim = getFontTextDim(text,Fonts[1])
-    drawFontText(160-fdim.width/2, 3, text, bmp, Fonts[1])
+    drawFontText(160-fdim.width/2, 3, text, Color YELLOW, bmp, Fonts[1])
 
 def difficultyMenu ( dt:float; var bmp:Bitmap8# )
     updatePalette()
@@ -2870,10 +2864,9 @@ def difficultyMenu ( dt:float; var bmp:Bitmap8# )
     assume opic = Pictures[int(PictureIndex OPTIONS)]
     rast_fillRect(bmp,0,0,bmp.size.x,bmp.size.y,opic.texels[0])
     drawMenu(difficultyMenuSelection,difficultyOptions, Fonts[0], dt, bmp)
-    setFontColor(uint8(Color YELLOW),Fonts[1])
     let text = "How tough are you?"
     let fdim = getFontTextDim(text,Fonts[1])
-    drawFontText(160-fdim.width/2, 3, text, bmp, Fonts[1])
+    drawFontText(160-fdim.width/2, 3, text, Color YELLOW, bmp, Fonts[1])
 
 // ------------------------------------------------------------
 
@@ -2885,7 +2878,6 @@ def woof3d_main ( app:Application? )
     application = app
     application->play_music("{WL6_FILES_ROOT}/1.mp3")
     InitFilesFirst()
-    setFontColor(uint8(Color BRIGHT_YELLOW),Fonts[0])
     // setupLevel(0)
     levelFade = 0.
     dLevelFade = LEVEL_FADE_FACTOR

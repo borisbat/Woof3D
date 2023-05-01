@@ -117,6 +117,7 @@ class OpenglApplication : woof3d::Application
         stop_sound(music.handle)
         music.snd <- create_sound(filename)
         music.handle = play_sound_loop(music.snd)
+        music.handle |> set_sound_volume(0.25)       // todo: music volume?
         music.busy = false
     def override play_app_sound ( wave:array<float>; freq:int )
         let i = allocate_app_sound()

@@ -8,8 +8,10 @@ require daslib/array_boost
 require daslib/random
 require daslib/algorithm
 require daslib/raster_boost
+require daslib/jobque_boost
 
-require sound
+require medialib/dasbox_sound_utils
+require medialib/opl3
 
 // -------------------- global configuation --------------------
 
@@ -53,7 +55,7 @@ class Application
     upButtonPressed : bool
     downButtonPressed : bool
 
-    def abstract play_music ( filename:string ) : void
+    def abstract play_app_music ( wave:array<float2>; freq:int ) : void
     def abstract play_app_sound ( wave:array<float>; freq:int ) : void
     def abstract play_app_sound_2d ( pos:float2; radius:float; wave:array<float>; freq:int ) : void
     def abstract set_palette ( pal : uint[256] ) : void
@@ -67,6 +69,7 @@ var application : Application?
 let USE_ADLIB = true
 let SOUND_SAMPLE_RATE = 7000
 let ADLIB_SAMPLE_RATE = 44100
+let MUSIC_SAMPLE_RATE = 44100
 
 let TOTAL_LEVELS = 60
 
@@ -76,9 +79,11 @@ let HUFFMAN_TREE_ROOT = 254
 let NUMBER_OF_PIC_CHUNKS = 149
 
 let NUMSOUNDS = 87
+let NUMMUS = 26
 let STARTPCSOUNDS = 0
 let STARTADLIBSOUNDS = 87
 let STARTDIGISOUNDS = 174
+let STARTMUSIC = 261
 let PC_RATE = 140
 let PC_BASE_TIMER = 1193181
 let PC_VOLUME = 20
@@ -134,6 +139,11 @@ struct AdlibSound
     data : array<uint16>
 
 var AdlibAudio : array<AdlibSound>
+
+struct AdlibMusic
+    data : array<uint16>    // stereo
+
+var Music : array<AdlibMusic>
 
 var PicOffsets : int[NUMBER_OF_PIC_CHUNKS]
 
@@ -439,72 +449,9 @@ def convertPcSoundToWave ( src:array<uint8>#; hertz:int )
                 dst[dstOut++] = 128u8
     return <- dst
 
-/*
-
-UINT32LE	length	Length of sound data
-UINT16LE	priority	Sound priority (Only 1 sound may play at a time; any sound will interrupt a sound of equal or lower priority.)
-BYTE[16]	instrument	Instrument settings
-BYTE	block	Octave number
-BYTE[length]	data	Actual sound data
-UINT8	terminator	(Muse-only ?)
-ASCIIZ[]	name	NULL-terminated Instrument name (optional, Muse-only)
-
-The octave value is written into the block field of OPL register 0xB0. Since this register also holds other important fields (including the note on/off bit) care must be taken to ensure any writes to this register don't interfere with the other fields stored there. To calculate where the octave value should be written, the following formula can be used:
-
-block = (octave & 7) << 2
-regB0 = block | other_fields
-
-Data type	Name	OPL register	Description
-UINT8	mChar	0x20	Modulator characteristics
-UINT8	cChar	0x23	Carrier characteristics
-UINT8	mScale	0x40	Modulator scale
-UINT8	cScale	0x43	Carrier scale
-UINT8	mAttack	0x60	Modulator attack/decay rate
-UINT8	cAttack	0x63	Carrier attack/decay rate
-UINT8	mSust	0x80	Modulator sustain
-UINT8	cSust	0x83	Carrier sustain
-UINT8	mWave	0xE0	Modulator waveform
-UINT8	cWave	0xE3	Carrier waveform
-UINT8	nConn	0xC0	Feedback/connection (usually ignored and set to 0)
-UINT8	voice	-	unknown (Muse-only)
-UINT8	mode	-	unknown (Muse-only)
-UINT8[3]	padding	-	Pad instrument definition up to 16 bytes
-
-block = (octave & 7) << 2
-note = off
-while (more data) {
-  get next byte
-  if next byte is 0x00 {
-    setRegister(0xB0, block)
-    note = off
-  } else {
-    setRegister(0xA0, next byte)
-    if note is off {
-      setRegister(0xB0, block | 0x20)
-      note = on
-    }
-  }
-  wait for next 140 Hz tick
-}
-*/
-
-def OPL3_Reset ( var chip:Opl3Chip; rate:int )
-    OPL3_Reset(unsafe(addr(chip)),uint(rate))
-
-def OPL3_WriteReg ( var chip:Opl3Chip; reg:uint; val:uint8 )
-    OPL3_WriteReg(unsafe(addr(chip)), uint16(reg), val)
-
-def OPL3_GenerateStream ( var chip:Opl3Chip; var data:array<uint16> )
-    var tdata : array<uint16>
-    tdata |> resize(length(data)*2)
-    let pdata : void? = unsafe(addr(tdata[0]))
-    OPL3_GenerateStream(unsafe(addr(chip)), pdata, uint(data |> length))
-    for i in range(data |> length)
-        data[i] = tdata[i*2]    // only left channel
-
 var private chip : Opl3Chip
 
-def convertAdlibToWave ( src:array<uint8>#; hertz:int )
+def convertAdlibToWave ( src:array<uint8> | #; hertz:int )
     let ldata = int(getUInt32(src, 0))
     let instrument_offset = 6
     var data : array<uint16>
@@ -536,28 +483,79 @@ def convertAdlibToWave ( src:array<uint8>#; hertz:int )
                 note = true
         var tmp : array<uint16>
         tmp |> resize_no_init(bytes)
-        OPL3_GenerateStream(chip, tmp)
+        OPL3_GenerateStreamMono(chip, tmp)
         let ld = length(data)
         data |> resize ( length(data) + bytes )
         for t,tb in count(),tmp
             data[ld+t] = tb
     return <- data
 
+def convertIMFToWave ( src:array<uint8> | #; hertz:int )
+    var data : array<uint16>
+    let llength = int(getUInt16(src, 0))
+    OPL3_Reset(chip, hertz)
+    let delay_1 = hertz / 700
+    for i in range(llength/4)
+        let reg = src |> getUInt8(2+i*4+0)
+        let rdata = src |> getUInt8(2+i*4+1)
+        let delay = int(src |> getUInt16(2+i*4+2))
+        if reg != 0u8
+            OPL3_WriteReg ( chip, uint(reg), rdata )
+        if delay != 0
+            let samples = delay * delay_1 * 2
+            var tmp : array<uint16>
+            tmp |> resize_no_init(samples)
+            OPL3_GenerateStream(chip, tmp)
+            let ld = length(data)
+            data |> resize ( length(data) + samples )
+            for t,tb in count(),tmp
+                data[ld+t] = tb
+    return <- data
+
+struct AudioData
+    index : int
+    data : array<uint16>
+
 def InitAudio()
-    var audioHeader <- LoadBytes("AUDIOHED.WL6")
-    var audioData <- LoadBytes("AUDIOT.WL6")
-    for i in range(NUMSOUNDS)
-        let offset = getUInt32(audioHeader, (i+STARTPCSOUNDS)*4)
-        let size = getUInt32(audioHeader, (i+1+STARTPCSOUNDS)*4) - offset
-        array_view(audioData, int(offset), int(size)) <| $ ( view )
-            var snd <- [[Sound data <- convertPcSoundToWave(view, SOUND_SAMPLE_RATE)]]
-            Audio |> emplace(snd)
-    for i in range(NUMSOUNDS)
-        let offset = getUInt32(audioHeader, (i+STARTADLIBSOUNDS)*4)
-        let size = getUInt32(audioHeader, (i+1+STARTADLIBSOUNDS)*4) - offset
-        array_view(audioData, int(offset), int(size)) <| $ ( view )
-            var snd <- [[AdlibSound data <- convertAdlibToWave(view, ADLIB_SAMPLE_RATE)]]
-            AdlibAudio |> emplace(snd)
+    with_job_que <|
+        var audioHeader <- LoadBytes("AUDIOHED.WL6")
+        var audioData <- LoadBytes("AUDIOT.WL6")
+        for i in range(NUMSOUNDS)
+            let offset = getUInt32(audioHeader, (i+STARTPCSOUNDS)*4)
+            let size = getUInt32(audioHeader, (i+1+STARTPCSOUNDS)*4) - offset
+            array_view(audioData, int(offset), int(size)) <| $ ( view )
+                var snd <- [[Sound data <- convertPcSoundToWave(view, SOUND_SAMPLE_RATE)]]
+                Audio |> emplace(snd)
+        with_channel(NUMSOUNDS) <| $ ( channel )
+            for i in range(NUMSOUNDS)
+                let offset = getUInt32(audioHeader, (i+STARTADLIBSOUNDS)*4)
+                let size = getUInt32(audioHeader, (i+1+STARTADLIBSOUNDS)*4) - offset
+                array_view(audioData, int(offset), int(size)) <| $ ( view )
+                    var cdata : array<uint8> := view
+                    new_job <| @ [[:=cdata]]
+                        var wave <- convertAdlibToWave(cdata, ADLIB_SAMPLE_RATE)
+                        delete cdata
+                        channel |> push_clone ( [[AudioData index=i, data<-wave]] )
+                        channel |> notify_and_release
+                    delete cdata
+            AdlibAudio |> resize(NUMSOUNDS)
+            for jb in each(channel,type<AudioData>)
+                AdlibAudio[jb.index].data := jb.data
+        with_channel(NUMMUS) <| $ ( channel )
+            for i in range(NUMMUS)
+                let offset = getUInt32(audioHeader, (i+STARTMUSIC)*4)
+                let size = getUInt32(audioHeader, (i+1+STARTMUSIC)*4) - offset
+                array_view(audioData, int(offset), int(size)) <| $ ( view )
+                    var cdata : array<uint8> := view
+                    new_job <| @ [[:=cdata]]
+                        var wave <- convertIMFToWave(cdata, MUSIC_SAMPLE_RATE)
+                        delete cdata
+                        channel |> push_clone ( [[AudioData index=i, data<-wave]] )
+                        channel |> notify_and_release
+                    delete cdata
+            Music |> resize(NUMMUS)
+            for jb in each(channel,type<AudioData>)
+                Music[jb.index].data := jb.data
 
 def InitHuffmanTree
     var bytes <- LoadBytes("VGADICT.WL6")
@@ -723,6 +721,16 @@ enum SoundName
     EINESND_;                       ERLAUBENSND_;                   KEINSND_;                       MEINSND_;
     ROSESND_;                       MISSILEFIRESND;                 MISSILEHITSND;
 
+enum MusicName
+	CORNER_MUS;                 	DUNGEON_MUS;                	WARMARCH_MUS;               	GETTHEM_MUS;
+	HEADACHE_MUS;               	HITLWLTZ_MUS;                   INTROCW3_MUS;                   NAZI_NOR_MUS;
+	NAZI_OMI_MUS;                   POW_MUS;                        SALUTE_MUS;                     SEARCHN_MUS;
+	SUSPENSE_MUS;                   VICTORS_MUS;                    WONDERIN_MUS;                   FUNKYOU_MUS;
+	ENDLEVEL_MUS;                   GOINGAFT_MUS;                   PREGNANT_MUS;                   ULTIMATE_MUS;
+	NAZI_RAP_MUS;                   ZEROHOUR_MUS;                   TWELFTH_MUS;                    ROSTER_MUS;
+	URAHERO_MUS;                    VICMARCH_MUS;                   PACMAN_MUS;
+
+
 def get_sound_data ( name:SoundName; var playback_rate:int&; max_seq:int=INT_MAX )
     var index = int(name)
     var data : array<float>
@@ -751,6 +759,16 @@ def get_sound_data ( name:SoundName; var playback_rate:int&; max_seq:int=INT_MAX
             index ++
         playback_rate = SOUND_SAMPLE_RATE
     return <- data
+
+def play_game_music ( name:MusicName )
+    var data : array<float2>
+    assume music = Music[int(name)]
+    data |> resize( length(music.data)/2 )
+    for i in range(length(data))
+        let Il = int16(music.data[i*2])
+        let Ir = int16(music.data[i*2+1])
+        data[i] = float2(float(Il)/32768., float(Ir)/32768.)
+    application->play_app_music(data, MUSIC_SAMPLE_RATE)
 
 def play_game_sound_2d ( name:SoundName; xy:float2; r:float; rfactor:float = 1.0 )
     if name != SoundName NONE
@@ -2834,6 +2852,7 @@ def loadScreen0 ( dt:float; var bmp:Bitmap8# )
     if dLevelFade==0. && !at_app_start
         at_app_start = true
         InitFiles()
+        play_game_music(MusicName NAZI_NOR_MUS)
     defaultSplash(dt)
     updatePalette()
     beforeDraw(bmp)
@@ -3005,7 +3024,6 @@ def wolf3d_setGameMode ( mode:GameMode )
 
 def woof3d_main ( app:Application? )
     application = app
-    // application->play_music("{WL6_FILES_ROOT}/1.mp3")
     InitFilesFirst()
     // setupLevel(0)
     levelFade = 0.

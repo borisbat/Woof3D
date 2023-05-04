@@ -9,6 +9,8 @@ require daslib/random
 require daslib/algorithm
 require daslib/raster_boost
 
+require sound
+
 // -------------------- global configuation --------------------
 
 let WL6_FILES_ROOT = "../data"
@@ -62,7 +64,9 @@ var application : Application?
 
 // -------------------- resource files --------------------
 
+let USE_ADLIB = true
 let SOUND_SAMPLE_RATE = 7000
+let ADLIB_SAMPLE_RATE = 44100
 
 let TOTAL_LEVELS = 60
 
@@ -125,6 +129,11 @@ struct Sound
 var Sounds : array<Sound>
 
 var Audio : array<Sound>
+
+struct AdlibSound
+    data : array<uint16>
+
+var AdlibAudio : array<AdlibSound>
 
 var PicOffsets : int[NUMBER_OF_PIC_CHUNKS]
 
@@ -430,6 +439,110 @@ def convertPcSoundToWave ( src:array<uint8>#; hertz:int )
                 dst[dstOut++] = 128u8
     return <- dst
 
+/*
+
+UINT32LE	length	Length of sound data
+UINT16LE	priority	Sound priority (Only 1 sound may play at a time; any sound will interrupt a sound of equal or lower priority.)
+BYTE[16]	instrument	Instrument settings
+BYTE	block	Octave number
+BYTE[length]	data	Actual sound data
+UINT8	terminator	(Muse-only ?)
+ASCIIZ[]	name	NULL-terminated Instrument name (optional, Muse-only)
+
+The octave value is written into the block field of OPL register 0xB0. Since this register also holds other important fields (including the note on/off bit) care must be taken to ensure any writes to this register don't interfere with the other fields stored there. To calculate where the octave value should be written, the following formula can be used:
+
+block = (octave & 7) << 2
+regB0 = block | other_fields
+
+Data type	Name	OPL register	Description
+UINT8	mChar	0x20	Modulator characteristics
+UINT8	cChar	0x23	Carrier characteristics
+UINT8	mScale	0x40	Modulator scale
+UINT8	cScale	0x43	Carrier scale
+UINT8	mAttack	0x60	Modulator attack/decay rate
+UINT8	cAttack	0x63	Carrier attack/decay rate
+UINT8	mSust	0x80	Modulator sustain
+UINT8	cSust	0x83	Carrier sustain
+UINT8	mWave	0xE0	Modulator waveform
+UINT8	cWave	0xE3	Carrier waveform
+UINT8	nConn	0xC0	Feedback/connection (usually ignored and set to 0)
+UINT8	voice	-	unknown (Muse-only)
+UINT8	mode	-	unknown (Muse-only)
+UINT8[3]	padding	-	Pad instrument definition up to 16 bytes
+
+block = (octave & 7) << 2
+note = off
+while (more data) {
+  get next byte
+  if next byte is 0x00 {
+    setRegister(0xB0, block)
+    note = off
+  } else {
+    setRegister(0xA0, next byte)
+    if note is off {
+      setRegister(0xB0, block | 0x20)
+      note = on
+    }
+  }
+  wait for next 140 Hz tick
+}
+*/
+
+def OPL3_Reset ( var chip:Opl3Chip; rate:int )
+    OPL3_Reset(unsafe(addr(chip)),uint(rate))
+
+def OPL3_WriteReg ( var chip:Opl3Chip; reg:uint; val:uint8 )
+    OPL3_WriteReg(unsafe(addr(chip)), uint16(reg), val)
+
+def OPL3_GenerateStream ( var chip:Opl3Chip; var data:array<uint16> )
+    var tdata : array<uint16>
+    tdata |> resize(length(data)*2)
+    let pdata : void? = unsafe(addr(tdata[0]))
+    OPL3_GenerateStream(unsafe(addr(chip)), pdata, uint(data |> length))
+    for i in range(data |> length)
+        data[i] = tdata[i*2]    // only left channel
+
+var private chip : Opl3Chip
+
+def convertAdlibToWave ( src:array<uint8>#; hertz:int )
+    let ldata = int(getUInt32(src, 0))
+    let instrument_offset = 6
+    var data : array<uint16>
+    OPL3_Reset(chip, hertz)
+    OPL3_WriteReg ( chip, 0x20, src[instrument_offset+0] )    // mChar
+    OPL3_WriteReg ( chip, 0x40, src[instrument_offset+2] )    // mScale
+    OPL3_WriteReg ( chip, 0x60, src[instrument_offset+4] )    // mAttack
+    OPL3_WriteReg ( chip, 0x80, src[instrument_offset+6] )    // mSust
+    OPL3_WriteReg ( chip, 0xE0, src[instrument_offset+8] )    // mWave
+    OPL3_WriteReg ( chip, 0x23, src[instrument_offset+1] )    // cChar
+    OPL3_WriteReg ( chip, 0x43, src[instrument_offset+3] )    // cScale
+    OPL3_WriteReg ( chip, 0x63, src[instrument_offset+5] )    // cAttack
+    OPL3_WriteReg ( chip, 0x83, src[instrument_offset+7] )    // cSust
+    OPL3_WriteReg ( chip, 0xE3, src[instrument_offset+9] )    // cWave
+    // OPL3_WriteReg ( chip, 0xC0, src[instrument_offset+10] )   // nConn
+    OPL3_WriteReg ( chip, 0xC0, 0u8 )   // nConn
+    let blk = (uint(src[instrument_offset+16+1]) & 7u) << 2u
+    var note = false
+    let bytes = hertz / 140 // we write in 140hz chunks
+    for i in range(ldata)
+        let nb = src[i + instrument_offset + 16 + 2]
+        if nb==0u8
+            OPL3_WriteReg ( chip, 0xB0, uint8(blk) )
+            note = false
+        else
+            OPL3_WriteReg ( chip, 0xA0, nb )
+            if !note
+                OPL3_WriteReg ( chip, 0xB0, uint8(blk | 0x20) )
+                note = true
+        var tmp : array<uint16>
+        tmp |> resize_no_init(bytes)
+        OPL3_GenerateStream(chip, tmp)
+        let ld = length(data)
+        data |> resize ( length(data) + bytes )
+        for t,tb in count(),tmp
+            data[ld+t] = tb
+    return <- data
+
 def InitAudio()
     var audioHeader <- LoadBytes("AUDIOHED.WL6")
     var audioData <- LoadBytes("AUDIOT.WL6")
@@ -439,6 +552,12 @@ def InitAudio()
         array_view(audioData, int(offset), int(size)) <| $ ( view )
             var snd <- [[Sound data <- convertPcSoundToWave(view, SOUND_SAMPLE_RATE)]]
             Audio |> emplace(snd)
+    for i in range(NUMSOUNDS)
+        let offset = getUInt32(audioHeader, (i+STARTADLIBSOUNDS)*4)
+        let size = getUInt32(audioHeader, (i+1+STARTADLIBSOUNDS)*4) - offset
+        array_view(audioData, int(offset), int(size)) <| $ ( view )
+            var snd <- [[AdlibSound data <- convertAdlibToWave(view, ADLIB_SAMPLE_RATE)]]
+            AdlibAudio |> emplace(snd)
 
 def InitHuffmanTree
     var bytes <- LoadBytes("VGADICT.WL6")
@@ -604,14 +723,22 @@ enum SoundName
     EINESND_;                       ERLAUBENSND_;                   KEINSND_;                       MEINSND_;
     ROSESND_;                       MISSILEFIRESND;                 MISSILEHITSND;
 
-def get_sound_data ( name:SoundName; max_seq:int=INT_MAX )
+def get_sound_data ( name:SoundName; var playback_rate:int&; max_seq:int=INT_MAX )
     var index = int(name)
     var data : array<float>
     if index >= 1000
         index -= 1000
-        data |> reserve ( Audio[index].data |> length )
-        for i in Audio[index].data
-            data |> push(float(i)/128.0-1.0)
+        if USE_ADLIB
+            data |> reserve ( AdlibAudio[index].data |> length )
+            for i in AdlibAudio[index].data
+                let I = int16(i)
+                data |> push(float(I)/32768.)
+            playback_rate = ADLIB_SAMPLE_RATE
+        else
+            data |> reserve ( Audio[index].data |> length )
+            for i in Audio[index].data
+                data |> push(float(i)/128.0-1.0)
+            playback_rate = SOUND_SAMPLE_RATE
     else
         while index < length(Sounds)
             let next = Sounds[index].data |> length
@@ -622,15 +749,18 @@ def get_sound_data ( name:SoundName; max_seq:int=INT_MAX )
             if next != 4096
                 break
             index ++
+        playback_rate = SOUND_SAMPLE_RATE
     return <- data
 
-def play_game_sound_2d ( name:SoundName; xy:float2; r:float; rate:int=SOUND_SAMPLE_RATE )
+def play_game_sound_2d ( name:SoundName; xy:float2; r:float; rfactor:float = 1.0 )
     if name != SoundName NONE
-        application->play_app_sound_2d(xy, r, get_sound_data(name), rate)
+        var rate = 0
+        application->play_app_sound_2d(xy, r, get_sound_data(name,rate), int(float(rate)*rfactor))
 
-def play_game_sound ( name:SoundName; rate:int=SOUND_SAMPLE_RATE )
+def play_game_sound ( name:SoundName; rfactor:float = 1.0 )
     if name != SoundName NONE
-        application->play_app_sound(get_sound_data(name), rate)
+        var rate = 0
+        application->play_app_sound(get_sound_data(name,rate), int(float(rate)*rfactor))
 
 // -------------------- entities --------------------
 
@@ -818,7 +948,6 @@ let PAIN_SOUND_RADIUS = 64.
 let SHOT_SOUND_RADIUS = 64.
 let AGRO_SOUND_RADIUS = 64.
 
-let DOOR_SOUND_PLAYBACK_RATE = 18000
 let DOOR_SOUND_RADIUS = 20.      // how far away door sound can be heard (in tiles)
 let DOOR_OPEN_SPEED = 2.0        // how fast door opens (in tiles per second)
 let DOOR_CLOSE_SPPED = 2.0       // how fast door closes (in tiles per second)
@@ -1667,7 +1796,7 @@ def openDoor ( X,Y:int )
             active = true,
             isDoor = true
         ]]
-        play_game_sound_2d(SoundName OPENDOORSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS, DOOR_SOUND_PLAYBACK_RATE)
+        play_game_sound_2d(SoundName OPENDOORSND, float2(X,Y)+float2(0.5), DOOR_SOUND_RADIUS, 2.5)
 
 def activate ( var self:Player )
     with self
@@ -2255,7 +2384,7 @@ def updateTimers
                                 timer.t = DOOR_STAYS_CLOSED
                             else
                                 collision_plane[X][Y] = true
-                                play_game_sound_2d(SoundName CLOSEDOORSND, float2(XY)+float2(0.5), DOOR_SOUND_RADIUS, DOOR_SOUND_PLAYBACK_RATE)
+                                play_game_sound_2d(SoundName CLOSEDOORSND, float2(XY)+float2(0.5), DOOR_SOUND_RADIUS, 2.5)
                     if timer.t <= 0.
                         timer.t = 0.
                         timer.active = false
@@ -2876,7 +3005,7 @@ def wolf3d_setGameMode ( mode:GameMode )
 
 def woof3d_main ( app:Application? )
     application = app
-    application->play_music("{WL6_FILES_ROOT}/1.mp3")
+    // application->play_music("{WL6_FILES_ROOT}/1.mp3")
     InitFilesFirst()
     // setupLevel(0)
     levelFade = 0.

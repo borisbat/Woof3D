@@ -23,6 +23,8 @@ let ENABLE_MAP = true
 
 let MOUSE_SENSETIVITY = 0.2
 
+let WITH_MUSIC = false
+
 // -------------------- application --------------------
 
 class Application
@@ -58,7 +60,6 @@ class Application
     def abstract play_app_music ( wave:array<float2>; freq:int ) : void
     def abstract play_app_sound ( wave:array<float>; freq:int ) : void
     def abstract play_app_sound_2d ( pos:float2; radius:float; wave:array<float>; freq:int ) : void
-    def abstract set_palette ( pal : uint[256] ) : void
     def abstract set_app_sound_position ( xy:float2; dxy:float2 ) : void
     def abstract quit : void
 
@@ -541,21 +542,22 @@ def InitAudio()
             AdlibAudio |> resize(NUMSOUNDS)
             for jb in each(channel,type<AudioData>)
                 AdlibAudio[jb.index].data := jb.data
-        with_channel(NUMMUS) <| $ ( channel )
-            for i in range(NUMMUS)
-                let offset = getUInt32(audioHeader, (i+STARTMUSIC)*4)
-                let size = getUInt32(audioHeader, (i+1+STARTMUSIC)*4) - offset
-                array_view(audioData, int(offset), int(size)) <| $ ( view )
-                    var cdata : array<uint8> := view
-                    new_job <| @ [[:=cdata]]
-                        var wave <- convertIMFToWave(cdata, MUSIC_SAMPLE_RATE)
+        if WITH_MUSIC
+            with_channel(NUMMUS) <| $ ( channel )
+                for i in range(NUMMUS)
+                    let offset = getUInt32(audioHeader, (i+STARTMUSIC)*4)
+                    let size = getUInt32(audioHeader, (i+1+STARTMUSIC)*4) - offset
+                    array_view(audioData, int(offset), int(size)) <| $ ( view )
+                        var cdata : array<uint8> := view
+                        new_job <| @ [[:=cdata]]
+                            var wave <- convertIMFToWave(cdata, MUSIC_SAMPLE_RATE)
+                            delete cdata
+                            channel |> push_clone ( [[AudioData index=i, data<-wave]] )
+                            channel |> notify_and_release
                         delete cdata
-                        channel |> push_clone ( [[AudioData index=i, data<-wave]] )
-                        channel |> notify_and_release
-                    delete cdata
-            Music |> resize(NUMMUS)
-            for jb in each(channel,type<AudioData>)
-                Music[jb.index].data := jb.data
+                Music |> resize(NUMMUS)
+                for jb in each(channel,type<AudioData>)
+                    Music[jb.index].data := jb.data
 
 def InitHuffmanTree
     var bytes <- LoadBytes("VGADICT.WL6")
@@ -1941,7 +1943,7 @@ def nextGameMode
         // TODO: support other game modes
     splashTimer = DEFAULT_SPLASH_TIMER
 
-def updatePalette
+def updatePalette ( var bmp:Bitmap8# )
     // udpate flash
     if flashTime > 0.
         flashTime -= 1./60. * frame_time
@@ -1951,14 +1953,12 @@ def updatePalette
             flashTime = 0.
     if dLevelFade != 0.
         // fade between levels
-        var pal : uint[256]
         if becauseOfDeath && dLevelFade < 0.
-            for p,d in GamePalette, pal
+            for p,d in GamePalette, bmp.palette
                 d = pack_float_to_byte ( float4(255.,0.,0.,255.0) * levelFade )
         else
-            for p,d in GamePalette, pal
+            for p,d in GamePalette, bmp.palette
                 d = pack_float_to_byte ( unpack_byte_to_float(p) * levelFade )
-        application->set_palette(pal)
         levelFade += dLevelFade * frame_time
         if dLevelFade > 0. && levelFade >= 1.
             dLevelFade = 0.
@@ -1983,15 +1983,14 @@ def updatePalette
             let hb = heartbeat(playerHeartbeatTime*0.5)
             var factor = max(0., 1. - float(player.health) / 25. )
             ifactor = lerp(1., hb, factor)
-        var pal : uint[256]
-        for p,d in GamePalette,pal
+        for p,d in GamePalette,bmp.palette
             let fc = unpack_byte_to_float(p) * flashFactor + flashBase
             let tc = float4(255.,fc.y*ifactor,fc.z*ifactor,fc.w)
             let rc = lerp(fc, tc, float4(1.-ifactor))
             d = pack_float_to_byte ( clamp(rc, float4(0.), float4(255.)) )
-        application->set_palette(pal)
     else
-        application->set_palette(GamePalette)
+        for p,d in GamePalette,bmp.palette
+            d = p
 
 def setupLevel ( var index:int )
     to_log(LOG_INFO, "LOADING LEVEL {index}\n}")
@@ -2493,9 +2492,9 @@ def updateHud
         hudMessageTime = 0.
         hudMessage = ""
 
-def updateGame(dt:float)
+def updateGame(var bmp:Bitmap8#; dt:float)
     frame_time = min( dt / 16.0, 4.0 )  // at very low fps (spf?) things 'teleport'
-    updatePalette()
+    updatePalette(bmp)
     if dLevelFade != 0.
         return
     updateHud()
@@ -2852,9 +2851,10 @@ def loadScreen0 ( dt:float; var bmp:Bitmap8# )
     if dLevelFade==0. && !at_app_start
         at_app_start = true
         InitFiles()
-        play_game_music(MusicName NAZI_NOR_MUS)
+        if WITH_MUSIC
+            play_game_music(MusicName NAZI_NOR_MUS)
     defaultSplash(dt)
-    updatePalette()
+    updatePalette(bmp)
     beforeDraw(bmp)
     rast_fillRect(bmp,0,0,bmp.size.x,bmp.size.y,uint8(Color RED_5))
     fillHUDRect(10,70,140,106,uint8(Color RED_BACKGROUND),bmp)
@@ -2893,7 +2893,7 @@ def loadScreen0 ( dt:float; var bmp:Bitmap8# )
 
 def loadScreen1 ( dt:float; var bmp:Bitmap8# )
     defaultSplash(dt)
-    updatePalette()
+    updatePalette(bmp)
     beforeDraw(bmp)
     assume lpic = Pictures[int(PictureIndex PC13_LOGO)]
     rast_fillRect(bmp,0,0,bmp.size.x,bmp.size.y,lpic.texels[0])
@@ -2901,14 +2901,14 @@ def loadScreen1 ( dt:float; var bmp:Bitmap8# )
 
 def loadScreen2 ( dt:float; var bmp:Bitmap8# )
     defaultSplash(dt)
-    updatePalette()
+    updatePalette(bmp)
     beforeDraw(bmp)
     assume lpic = Pictures[int(PictureIndex TITLE_SCREEN)]
     drawHUDElement(0,0,lpic.width,lpic.height,lpic,bmp)
 
 def loadScreen3 ( dt:float; var bmp:Bitmap8# )
     defaultSplash(dt)
-    updatePalette()
+    updatePalette(bmp)
     beforeDraw(bmp)
     assume lpic = Pictures[int(PictureIndex CREDITS_SCREEN)]
     drawHUDElement(0,0,lpic.width,lpic.height,lpic,bmp)
@@ -2981,7 +2981,7 @@ def drawMenu ( menuSelection:int; menuOptions:array<MenuOption>; var font:Font; 
         drawFontText(x,y,opt.text,Color VERY_LIGHT_GREY,bmp,font)
 
 def mainMenu ( dt:float; var bmp:Bitmap8# )
-    updatePalette()
+    updatePalette(bmp)
     beforeDraw(bmp)
     runMenu(dt,mainMenuSelection,mainMenuOptions)
     rast_fillRect(bmp,0,0,bmp.size.x,bmp.size.y,uint8(Color RED_BACKGROUND))
@@ -2993,7 +2993,7 @@ def mainMenu ( dt:float; var bmp:Bitmap8# )
     drawMenu(mainMenuSelection,mainMenuOptions, Fonts[1], dt, bmp)
 
 def episodeMenu ( dt:float; var bmp:Bitmap8# )
-    updatePalette()
+    updatePalette(bmp)
     beforeDraw(bmp)
     runMenu(dt,episodeMenuSelection,episodeOptions)
     rast_fillRect(bmp,0,0,bmp.size.x,bmp.size.y,uint8(Color RED_BACKGROUND))
@@ -3005,7 +3005,7 @@ def episodeMenu ( dt:float; var bmp:Bitmap8# )
     drawFontText(160-fdim.width/2, 3, text, Color YELLOW, bmp, Fonts[1])
 
 def difficultyMenu ( dt:float; var bmp:Bitmap8# )
-    updatePalette()
+    updatePalette(bmp)
     beforeDraw(bmp)
     runMenu(dt,difficultyMenuSelection,difficultyOptions)
     rast_fillRect(bmp,0,0,bmp.size.x,bmp.size.y,uint8(Color RED_BACKGROUND))
@@ -3031,6 +3031,7 @@ def woof3d_main ( app:Application? )
     wolf3d_setGameMode(GameMode loadScreen0)
 
 def woof3d_update ( dt:float; var backbuffer:Bitmap8# )
+    backbuffer.flags |= RasterFlags column_major
     if gameMode == GameMode loadScreen0
         loadScreen0(dt, backbuffer)
     elif gameMode == GameMode loadScreen1
@@ -3046,7 +3047,7 @@ def woof3d_update ( dt:float; var backbuffer:Bitmap8# )
     elif gameMode == GameMode difficultyMenu
         difficultyMenu(dt, backbuffer)
     elif gameMode == GameMode playing
-        updateGame(dt)
+        updateGame(backbuffer,dt)
         draw(level, backbuffer)
         application->set_app_sound_position(player.pos, player.dir)
 

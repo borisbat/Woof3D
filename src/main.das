@@ -54,7 +54,11 @@ let indices = [[int 0; 1; 2; 2; 3; 0]]
 
 var bb_width = 0
 var bb_height = 0
-var bb_data : array<uint8>
+var surface : SurfaceData
+
+[finalize]
+def cleanup_surface
+    delete surface
 
 def get_screen_size
     return int2(bb_width,bb_height)
@@ -66,8 +70,6 @@ def update_bb ( var w, h : int )
         return false
     bb_width = w
     bb_height = h
-    bb_data |> clear()
-    bb_data |> resize(w*h)
     return true
 
 def create_gl_objects(w,h : int)
@@ -142,9 +144,6 @@ class OpenglApplication : woof3d::Application
     def override set_app_sound_position ( xy:float2; dxy:float2 )
         sound_head_position = xy
         sound_head_direction = dxy
-    def override set_palette ( pal : uint[256] )
-        for d,s in f_palette, pal
-            d = unpack_byte_to_float(s) / float4(255.)
     def allocate_app_sound
         for snd,i in playing_sounds,count()
             if !snd.busy
@@ -276,17 +275,24 @@ def main
         glfwGetFramebufferSize(window, display_w, display_h)
         update_bb(display_w, display_h)
         // callbakck
-        let t0 = ref_time_ticks()
-        var bmp <- [[Bitmap8 size=int2(bb_width,bb_height), data<-bb_data]]
-        woof3d_update(fmsec, unsafe(reinterpret<Bitmap8#> bmp))
-        bb_data <- bmp.data
-        let dt = get_time_usec(t0)
-        msecs = msecs*0.95 + float(dt/1000)*0.05
-        glfwSetWindowTitle(window, "WOOF3D {bb_width}x{bb_height} frame:{fmt_msec(fmsec)} rast:{fmt_msec(msecs)}")
+        if bb_width!=0 && bb_height!=0
+            let t0 = ref_time_ticks()
+            let surfaceSize = bitmap8_size(int2(bb_width,bb_height))
+            if surface.size != surfaceSize
+                delete surface
+                unsafe
+                    surface <- SurfaceData(surfaceSize)
+            surface |> make_bitmap8(int2(bb_width,bb_height)) <| $ ( bmp )
+                woof3d_update(fmsec, unsafe(reinterpret<Bitmap8#> bmp))
+                for p,d in bmp.palette,f_palette
+                    d = unpack_byte_to_float(p) / 255.
+            let dt = get_time_usec(t0)
+            msecs = msecs*0.95 + float(dt/1000)*0.05
+            glfwSetWindowTitle(window, "WOOF3D {bb_width}x{bb_height} frame:{fmt_msec(fmsec)} rast:{fmt_msec(msecs)} mem:{int64(heap_bytes_allocated())/1024l}kb")
         // make a texture
         glGenTextures(1, safe_addr(texture))
         glBindTexture(GL_TEXTURE_2D, texture)
-        glTexImage2D(GL_TEXTURE_2D, 0, int(GL_R8), bb_height, bb_width, 0, GL_RED, GL_UNSIGNED_BYTE, unsafe(addr(bb_data[0])))
+        glTexImage2D(GL_TEXTURE_2D, 0, int(GL_R8), bb_height, bb_width, 0, GL_RED, GL_UNSIGNED_BYTE, surface.data)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)

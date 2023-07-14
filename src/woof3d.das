@@ -10,8 +10,7 @@ require daslib/algorithm
 require daslib/raster_boost
 require daslib/jobque_boost
 
-require medialib/dasbox_sound_utils
-require medialib/opl3
+require audio/opl3
 
 // -------------------- global configuation --------------------
 
@@ -260,6 +259,8 @@ enum Color : uint8
 def LoadBytes ( filename : string )
     var bytes : array<uint8>
     fopen("{WL6_FILES_ROOT}/{filename}", "rb") <| $ ( fr )
+        if fr==null
+            panic("can't open {WL6_FILES_ROOT}/{filename}")
         fmap(fr) <| $ ( data )
             bytes := data
     if empty(bytes)
@@ -540,7 +541,7 @@ def InitAudio()
                         channel |> notify_and_release
                     delete cdata
             AdlibAudio |> resize(NUMSOUNDS)
-            for jb in each(channel,type<AudioData>)
+            for jb in each_clone(channel,type<AudioData>)
                 AdlibAudio[jb.index].data := jb.data
         if WITH_MUSIC
             with_channel(NUMMUS) <| $ ( channel )

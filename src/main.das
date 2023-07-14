@@ -10,7 +10,7 @@ require daslib/defer
 require daslib/safe_addr
 require math
 require strings
-require sound
+require audio/audio_boost
 require rtti
 
 var [[in, location=0]] v_position : float2
@@ -89,16 +89,6 @@ def create_gl_objects(w,h : int)
     // texture
     update_bb(w,h)
 
-let MAX_SOUNDS = 32
-
-struct PlayingSound
-    snd : PcmSound
-    handle : PlayingSoundHandle
-    busy : bool
-    is3d : bool
-    xy   : float2
-    radius : float
-
 var cursor_position_xy : float2
 var cursor_delta_xy : float2
 var mouse_buttons : int
@@ -108,67 +98,16 @@ class OpenglApplication : woof3d::Application
     downButton, prevDownButton : bool
     okButton, prevOkButton : bool
     cancelButton, prevCancelButton : bool
-    playing_sounds : PlayingSound[MAX_SOUNDS]
-    music : PlayingSound
-    sound_head_position : float2
-    sound_head_direction : float2
     def override quit : void
         glfwSetWindowShouldClose(window, GLFW_TRUE)
     def override play_app_music ( wave:array<float2>; freq:int ) : void
-        // TODO: setup music manager
-        stop_sound(music.handle)
-        music.snd <- create_sound(freq, wave)
-        music.handle = play_sound_loop(music.snd)
-        music.busy = false
+        pass
     def override play_app_sound ( wave:array<float>; freq:int )
-        let i = allocate_app_sound()
-        if i<0
-            return
-        playing_sounds[i].snd <- create_sound(freq, wave)
-        playing_sounds[i].handle = play_sound(playing_sounds[i].snd)
-        playing_sounds[i].busy = true
-        playing_sounds[i].is3d = false
+        play_sound_from_pcm(freq, 1, clone_to_move(wave))
     def override play_app_sound_2d ( pos:float2; radius:float; wave:array<float>; freq:int )
-        if length(pos - sound_head_position) > radius
-            return
-        let i = allocate_app_sound()
-        if i<0
-            return
-        playing_sounds[i].snd <- create_sound(freq, wave)
-        playing_sounds[i].handle = play_sound(playing_sounds[i].snd)
-        playing_sounds[i].busy = true
-        playing_sounds[i].is3d = true
-        playing_sounds[i].xy = pos
-        playing_sounds[i].radius = radius
-        update_3d_sound(playing_sounds[i])
+        play_3d_sound_from_pcm(float3(pos,0.), radius, freq, 1, clone_to_move(wave))
     def override set_app_sound_position ( xy:float2; dxy:float2 )
-        sound_head_position = xy
-        sound_head_direction = dxy
-    def allocate_app_sound
-        for snd,i in playing_sounds,count()
-            if !snd.busy
-                snd.busy = true
-                return i
-        return -1
-    def update_3d_sound ( var snd:PlayingSound)
-        var rxy = snd.xy - sound_head_position
-        rxy = float2(rxy.x * sound_head_direction.x + rxy.y * sound_head_direction.y,
-                    -rxy.x * sound_head_direction.y + rxy.y * sound_head_direction.x)
-        // linear volume attenuation???
-        let attn = max(0.0f, 1.0f - length(rxy) / snd.radius)
-        set_sound_volume(snd.handle, attn)
-        // panning
-        let nrxy = normalize(rxy)
-        set_sound_pan(snd.handle, -nrxy.y )
-    def update_sounds
-        for snd in playing_sounds
-            if snd.busy
-                if !is_playing(snd.handle)
-                    delete snd.snd
-                    snd.busy = false
-                    continue
-            if snd.is3d
-                update_3d_sound
+        set_head_position(float3(xy,0.), float3(dxy,0.))
     def update_controls
         // update cursor
         if glfwGetWindowAttrib(window, int(GLFW_FOCUSED))==GLFW_FALSE
@@ -237,81 +176,78 @@ def main
 		panic("can't init glfw")
     defer <|
         glfwTerminate()
-    sound_initialize()
-    defer <|
-        sound_finalize()
-    glfwInitOpenGL(3,3)
-    this_context().category |= context_category_flags opengl
-    window = glfwCreateWindow(1920, 1080, "RASTER2D", null, null)
-    if window==null
-		panic("can't create window")
-    defer <|
-        glfwDestroyWindow(window)
-    glfwMakeContextCurrent(window)
-    var display_w, display_h : int
-    glfwGetFramebufferSize(window, display_w, display_h)
-    create_gl_objects(display_w, display_h)
-    glfwSetInputMode(window, int(GLFW_CURSOR), int(GLFW_CURSOR_HIDDEN))
-    glfwSetInputMode(window, int(GLFW_RAW_MOUSE_MOTION), int(GLFW_TRUE))
-    cursor_position_xy = glfwGetCursorPos(window)
-    var tframe = ref_time_ticks()
-    var prev_sec = glfwGetTime()
-    var msecs = 12.
-    var fmsec = 16.
-    var application = new OpenglApplication()
-    woof3d_main(application)
-    while glfwWindowShouldClose(window)==0
-        var tsec = glfwGetTime()
-        dt_sec = tsec - prev_sec
-        prev_sec = tsec
-        var dt_frame = get_time_usec(tframe)
-        tframe = ref_time_ticks()
-        fmsec = fmsec*0.95 + float(dt_frame/1000)*0.05
-        application->update_sounds()
-        application->update_controls()
-        unsafe
-            heap_collect(true,true)
-        glfwPollEvents()
-        glfwGetFramebufferSize(window, display_w, display_h)
-        update_bb(display_w, display_h)
-        // callbakck
-        if bb_width!=0 && bb_height!=0
-            let t0 = ref_time_ticks()
-            let surfaceSize = bitmap8_size(int2(bb_width,bb_height))
-            if surface.size != surfaceSize
-                delete surface
-                unsafe
-                    surface <- SurfaceData(surfaceSize)
-            surface |> make_bitmap8(int2(bb_width,bb_height)) <| $ ( bmp )
-                woof3d_update(fmsec, unsafe(reinterpret<Bitmap8#> bmp))
-                for p,d in bmp.palette,f_palette
-                    d = unpack_byte_to_float(p) / 255.
-            let dt = get_time_usec(t0)
-            msecs = msecs*0.95 + float(dt/1000)*0.05
-            glfwSetWindowTitle(window, "WOOF3D {bb_width}x{bb_height} frame:{fmt_msec(fmsec)} rast:{fmt_msec(msecs)} mem:{int64(heap_bytes_allocated())/1024l}kb")
-        // make a texture
-        glGenTextures(1, safe_addr(texture))
-        glBindTexture(GL_TEXTURE_2D, texture)
-        glTexImage2D(GL_TEXTURE_2D, 0, int(GL_R8), bb_height, bb_width, 0, GL_RED, GL_UNSIGNED_BYTE, surface.data)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
-        glBindTexture(GL_TEXTURE_2D, GL_INVALID_VALUE)
-        // render
-        glViewport(0, 0, display_w, display_h)
-        glDisable(GL_DEPTH_TEST)
-        glDepthMask(false)
-        glUseProgram(program)
-        f_tex := texture           // bind texture
-        vs_main_bind_uniform(program)
-        fs_main_bind_uniform(program)
-        glBindVertexArray(vao)
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo)
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, null)
-        glBindTexture(GL_TEXTURE_2D, GL_INVALID_VALUE)
-        // kill texture
-        glDeleteTextures(1, safe_addr(texture))
-        // swap buffersa
+    with_audio_system <|
+        glfwInitOpenGL(3,3)
+        this_context().category |= context_category_flags opengl
+        window = glfwCreateWindow(1920, 1080, "RASTER2D", null, null)
+        if window==null
+            panic("can't create window")
+        defer <|
+            glfwDestroyWindow(window)
         glfwMakeContextCurrent(window)
-        glfwSwapBuffers(window)
+        var display_w, display_h : int
+        glfwGetFramebufferSize(window, display_w, display_h)
+        create_gl_objects(display_w, display_h)
+        glfwSetInputMode(window, int(GLFW_CURSOR), int(GLFW_CURSOR_HIDDEN))
+        glfwSetInputMode(window, int(GLFW_RAW_MOUSE_MOTION), int(GLFW_TRUE))
+        cursor_position_xy = glfwGetCursorPos(window)
+        var tframe = ref_time_ticks()
+        var prev_sec = glfwGetTime()
+        var msecs = 12.
+        var fmsec = 16.
+        var application = new OpenglApplication()
+        woof3d_main(application)
+        while glfwWindowShouldClose(window)==0
+            var tsec = glfwGetTime()
+            dt_sec = tsec - prev_sec
+            prev_sec = tsec
+            var dt_frame = get_time_usec(tframe)
+            tframe = ref_time_ticks()
+            fmsec = fmsec*0.95 + float(dt_frame/1000)*0.05
+            application->update_controls()
+            unsafe
+                heap_collect(true,true)
+            glfwPollEvents()
+            glfwGetFramebufferSize(window, display_w, display_h)
+            update_bb(display_w, display_h)
+            // callbakck
+            if bb_width!=0 && bb_height!=0
+                let t0 = ref_time_ticks()
+                let surfaceSize = bitmap8_size(int2(bb_width,bb_height))
+                if surface.size != surfaceSize
+                    delete surface
+                    unsafe
+                        surface <- SurfaceData(surfaceSize)
+                surface |> make_bitmap8(int2(bb_width,bb_height)) <| $ ( bmp )
+                    woof3d_update(fmsec, unsafe(reinterpret<Bitmap8#> bmp))
+                    for p,d in bmp.palette,f_palette
+                        d = unpack_byte_to_float(p) / 255.
+                let dt = get_time_usec(t0)
+                msecs = msecs*0.95 + float(dt/1000)*0.05
+                glfwSetWindowTitle(window, "WOOF3D {bb_width}x{bb_height} frame:{fmt_msec(fmsec)} rast:{fmt_msec(msecs)} mem:{int64(heap_bytes_allocated())/1024l}kb")
+            // make a texture
+            glGenTextures(1, safe_addr(texture))
+            glBindTexture(GL_TEXTURE_2D, texture)
+            glTexImage2D(GL_TEXTURE_2D, 0, int(GL_R8), bb_height, bb_width, 0, GL_RED, GL_UNSIGNED_BYTE, surface.data)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+            glBindTexture(GL_TEXTURE_2D, GL_INVALID_VALUE)
+            // render
+            glViewport(0, 0, display_w, display_h)
+            glDisable(GL_DEPTH_TEST)
+            glDepthMask(false)
+            glUseProgram(program)
+            f_tex := texture           // bind texture
+            vs_main_bind_uniform(program)
+            fs_main_bind_uniform(program)
+            glBindVertexArray(vao)
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo)
+            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, null)
+            glBindTexture(GL_TEXTURE_2D, GL_INVALID_VALUE)
+            // kill texture
+            glDeleteTextures(1, safe_addr(texture))
+            // swap buffersa
+            glfwMakeContextCurrent(window)
+            glfwSwapBuffers(window)

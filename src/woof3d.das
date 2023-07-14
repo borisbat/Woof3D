@@ -22,7 +22,7 @@ let ENABLE_MAP = true
 
 let MOUSE_SENSETIVITY = 0.2
 
-let WITH_MUSIC = false
+let WITH_MUSIC = true
 
 // -------------------- application --------------------
 
@@ -56,7 +56,7 @@ class Application
     upButtonPressed : bool
     downButtonPressed : bool
 
-    def abstract play_app_music ( wave:array<float2>; freq:int ) : void
+    def abstract play_app_music ( data:array<uint8> ) : void
     def abstract play_app_sound ( wave:array<float>; freq:int ) : void
     def abstract play_app_sound_2d ( pos:float2; radius:float; wave:array<float>; freq:int ) : void
     def abstract set_app_sound_position ( xy:float2; dxy:float2 ) : void
@@ -141,7 +141,7 @@ struct AdlibSound
 var AdlibAudio : array<AdlibSound>
 
 struct AdlibMusic
-    data : array<uint16>    // stereo
+    data : array<uint8>    // OPL3 commands
 
 var Music : array<AdlibMusic>
 
@@ -544,21 +544,11 @@ def InitAudio()
             for jb in each_clone(channel,type<AudioData>)
                 AdlibAudio[jb.index].data := jb.data
         if WITH_MUSIC
-            with_channel(NUMMUS) <| $ ( channel )
-                for i in range(NUMMUS)
-                    let offset = getUInt32(audioHeader, (i+STARTMUSIC)*4)
-                    let size = getUInt32(audioHeader, (i+1+STARTMUSIC)*4) - offset
-                    array_view(audioData, int(offset), int(size)) <| $ ( view )
-                        var cdata : array<uint8> := view
-                        new_job <| @ [[:=cdata]]
-                            var wave <- convertIMFToWave(cdata, MUSIC_SAMPLE_RATE)
-                            delete cdata
-                            channel |> push_clone ( [[AudioData index=i, data<-wave]] )
-                            channel |> notify_and_release
-                        delete cdata
-                Music |> resize(NUMMUS)
-                for jb in each(channel,type<AudioData>)
-                    Music[jb.index].data := jb.data
+            for i in range(NUMMUS)
+                let offset = getUInt32(audioHeader, (i+STARTMUSIC)*4)
+                let size = getUInt32(audioHeader, (i+1+STARTMUSIC)*4) - offset
+                array_view(audioData, int(offset), int(size)) <| $ ( view )
+                    Music |> emplace <| [[AdlibMusic data := view]]
 
 def InitHuffmanTree
     var bytes <- LoadBytes("VGADICT.WL6")
@@ -764,14 +754,7 @@ def get_sound_data ( name:SoundName; var playback_rate:int&; max_seq:int=INT_MAX
     return <- data
 
 def play_game_music ( name:MusicName )
-    var data : array<float2>
-    assume music = Music[int(name)]
-    data |> resize( length(music.data)/2 )
-    for i in range(length(data))
-        let Il = int16(music.data[i*2])
-        let Ir = int16(music.data[i*2+1])
-        data[i] = float2(float(Il)/32768., float(Ir)/32768.)
-    application->play_app_music(data, MUSIC_SAMPLE_RATE)
+    application->play_app_music(Music[int(name)].data)
 
 def play_game_sound_2d ( name:SoundName; xy:float2; r:float; rfactor:float = 1.0 )
     if name != SoundName NONE

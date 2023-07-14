@@ -11,7 +11,9 @@ require daslib/safe_addr
 require math
 require strings
 require audio/audio_boost
+require audio/opl3
 require rtti
+require daslib/jobque_boost
 
 var [[in, location=0]] v_position : float2
 var [[in, location=2]] v_texcoord : float2
@@ -93,15 +95,87 @@ var cursor_position_xy : float2
 var cursor_delta_xy : float2
 var mouse_buttons : int
 
+variant MusicCommand
+    stop : bool
+    play : array<uint8>
+
+def decodeIMFT ( var src : array<uint8>; hertz : int )
+    return <- generator<float> [[:=src]] () <|
+        var pchip = new Opl3Chip
+        let llength = int(getUInt16(src, 0))
+        OPL3_Reset(*pchip, hertz)
+        let delay_1 = hertz / 700
+        for i in range(llength/4)
+            let reg = src |> getUInt8(2+i*4+0)
+            let rdata = src |> getUInt8(2+i*4+1)
+            let delay = int(src |> getUInt16(2+i*4+2))
+            if reg != 0u8
+                OPL3_WriteReg ( *pchip, uint(reg), rdata )
+            if delay != 0
+                let samples = delay * delay_1 * 2
+                var tmp : array<uint16>
+                tmp |> resize_no_init(samples)
+                OPL3_GenerateStream(*pchip, tmp)
+                for tb in tmp
+                    yield float(int16(tb)) / 32768.0
+        return false
+    finally
+        unsafe
+            delete pchip
+
 class OpenglApplication : woof3d::Application
     upButton, prevUpButton : bool
     downButton, prevDownButton : bool
     okButton, prevOkButton : bool
     cancelButton, prevCancelButton : bool
+    music_sid : SID
+    music_channel : Channel?
+    def OpenglApplication
+        music_sid = play_sound_from_pcm_stream(MA_SAMPLE_RATE,2)
+        unsafe
+            music_channel = channel_create()
+        var mch = music_channel
+        var cch = get_audio_command_channel()
+        var msid = music_sid
+        new_thread <| @
+            mch |> append(1)
+            unsafe
+                set_audio_thread_command_channel(cch)
+            var stopped = false
+            var imft : iterator<float>
+            while !stopped
+                var commands : array<MusicCommand>
+                mch |> gather <| $ ( cmd:MusicCommand# )
+                    commands |> push_clone(cmd)
+                for cmd in commands
+                    if cmd is stop
+                        stopped = true
+                    elif cmd is play
+                        delete imft
+                        imft <- decodeIMFT(cmd as play, MA_SAMPLE_RATE)
+                if stopped
+                    break
+                if !empty(imft)
+                    var data : array<float>
+                    data |> reserve(1024)
+                    for i in range(1024)
+                        var sample : float
+                        if !next(imft, sample)
+                            break
+                        data |> push(sample)
+                    append_to_pcm(msid, data)
+            mch |> notify_and_release
+
+    def finalize
+        music_channel |> push_clone <| [[MusicCommand stop=true]]
+        music_channel |> join
+        unsafe(channel_remove(music_channel))
+        music_channel = null
+        stop(music_sid)
     def override quit : void
         glfwSetWindowShouldClose(window, GLFW_TRUE)
-    def override play_app_music ( wave:array<float2>; freq:int ) : void
-        pass
+    def override play_app_music ( data : array<uint8> ) : void
+        music_channel |> push_clone <| [[MusicCommand play <- clone_to_move(data)]]
     def override play_app_sound ( wave:array<float>; freq:int )
         play_sound_from_pcm(freq, 1, clone_to_move(wave))
     def override play_app_sound_2d ( pos:float2; radius:float; wave:array<float>; freq:int )
@@ -251,3 +325,5 @@ def main
             // swap buffersa
             glfwMakeContextCurrent(window)
             glfwSwapBuffers(window)
+        unsafe
+            delete application

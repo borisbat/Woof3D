@@ -723,6 +723,14 @@ enum MusicName
 	NAZI_RAP_MUS;                   ZEROHOUR_MUS;                   TWELFTH_MUS;                    ROSTER_MUS;
 	URAHERO_MUS;                    VICMARCH_MUS;                   PACMAN_MUS;
 
+let SongsPerLevel <- [[MusicName[10*6]                                                                                                                                                                              // boss                 // secret
+    MusicName GETTHEM_MUS;    MusicName SEARCHN_MUS;    MusicName POW_MUS;        MusicName SUSPENSE_MUS;   MusicName GETTHEM_MUS;    MusicName SEARCHN_MUS;    MusicName POW_MUS;        MusicName SUSPENSE_MUS;   MusicName WARMARCH_MUS; MusicName CORNER_MUS;
+    MusicName NAZI_OMI_MUS;   MusicName PREGNANT_MUS;   MusicName GOINGAFT_MUS;   MusicName HEADACHE_MUS;   MusicName NAZI_OMI_MUS;   MusicName PREGNANT_MUS;   MusicName HEADACHE_MUS;   MusicName GOINGAFT_MUS;   MusicName WARMARCH_MUS; MusicName DUNGEON_MUS;
+    MusicName INTROCW3_MUS;   MusicName NAZI_RAP_MUS;   MusicName TWELFTH_MUS;    MusicName ZEROHOUR_MUS;   MusicName INTROCW3_MUS;   MusicName NAZI_RAP_MUS;   MusicName TWELFTH_MUS;    MusicName ZEROHOUR_MUS;   MusicName ULTIMATE_MUS; MusicName PACMAN_MUS;
+    MusicName GETTHEM_MUS;    MusicName SEARCHN_MUS;    MusicName POW_MUS;        MusicName SUSPENSE_MUS;   MusicName GETTHEM_MUS;    MusicName SEARCHN_MUS;    MusicName POW_MUS;        MusicName SUSPENSE_MUS;   MusicName WARMARCH_MUS; MusicName CORNER_MUS;
+    MusicName NAZI_OMI_MUS;   MusicName PREGNANT_MUS;   MusicName GOINGAFT_MUS;   MusicName HEADACHE_MUS;   MusicName NAZI_OMI_MUS;   MusicName PREGNANT_MUS;   MusicName HEADACHE_MUS;   MusicName GOINGAFT_MUS;   MusicName WARMARCH_MUS; MusicName DUNGEON_MUS;
+    MusicName INTROCW3_MUS;   MusicName NAZI_RAP_MUS;   MusicName TWELFTH_MUS;    MusicName ZEROHOUR_MUS;   MusicName INTROCW3_MUS;   MusicName NAZI_RAP_MUS;   MusicName TWELFTH_MUS;    MusicName ZEROHOUR_MUS;   MusicName ULTIMATE_MUS; MusicName FUNKYOU_MUS
+]]
 
 def get_sound_data ( name:SoundName; var playback_rate:int&; max_seq:int=INT_MAX )
     var index = int(name)
@@ -755,6 +763,9 @@ def get_sound_data ( name:SoundName; var playback_rate:int&; max_seq:int=INT_MAX
 
 def play_game_music ( name:MusicName )
     application->play_app_music(Music[int(name)].data)
+
+def stop_game_music
+    application->play_app_music([[array<uint8>]])
 
 def play_game_sound_2d ( name:SoundName; xy:float2; r:float; rfactor:float = 1.0 )
     if name != SoundName NONE
@@ -1978,6 +1989,7 @@ def updatePalette ( var bmp:Bitmap8# )
 
 def setupLevel ( var index:int )
     to_log(LOG_INFO, "LOADING LEVEL {index}\n}")
+    play_game_music(SongsPerLevel[index])
     level := Levels[index]
     delete objects
     delete enemies

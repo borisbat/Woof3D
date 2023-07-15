@@ -14,6 +14,7 @@ require audio/audio_boost
 require audio/opl3
 require rtti
 require daslib/jobque_boost
+require daslib/fio
 
 var [[in, location=0]] v_position : float2
 var [[in, location=2]] v_texcoord : float2
@@ -95,10 +96,6 @@ var cursor_position_xy : float2
 var cursor_delta_xy : float2
 var mouse_buttons : int
 
-variant MusicCommand
-    stop : bool
-    play : array<uint8>
-
 def decodeIMFT ( var src : array<uint8>; hertz : int )
     return <- generator<float> [[:=src]] () <|
         var pchip = new Opl3Chip
@@ -128,54 +125,49 @@ class OpenglApplication : woof3d::Application
     downButton, prevDownButton : bool
     okButton, prevOkButton : bool
     cancelButton, prevCancelButton : bool
-    music_sid : SID
     music_channel : Channel?
-    def OpenglApplication
-        music_sid = play_sound_from_pcm_stream(MA_SAMPLE_RATE,2)
+    def stop_the_music
+        if music_channel != null
+            music_channel |> append(1)
+            music_channel = null
+    def finalize
+        stop_the_music()
+    def override quit : void
+        glfwSetWindowShouldClose(window, GLFW_TRUE)
+    def override play_app_music ( var data : array<uint8> ) : void
+        stop_the_music()
+        if data |> length == 0
+            return
         unsafe
             music_channel = channel_create()
         var mch = music_channel
         var cch = get_audio_command_channel()
-        var msid = music_sid
-        new_thread <| @
-            mch |> append(1)
+        let music_sid = generate_sound_sid()
+        new_thread <| @ [[:=data]]
             unsafe
                 set_audio_thread_command_channel(cch)
-            var stopped = false
-            var imft : iterator<float>
-            while !stopped
-                var commands : array<MusicCommand>
-                mch |> gather <| $ ( cmd:MusicCommand# )
-                    commands |> push_clone(cmd)
-                for cmd in commands
-                    if cmd is stop
-                        stopped = true
-                    elif cmd is play
-                        delete imft
-                        imft <- decodeIMFT(cmd as play, MA_SAMPLE_RATE)
-                if stopped
+            play_sound_from_pcm_stream(MA_SAMPLE_RATE,2,music_sid)
+            music_sid |> set_volume(0.)
+            music_sid |> set_volume(1., 1.) // ramp-up
+            var imft <- decodeIMFT(data, MA_SAMPLE_RATE)
+            while true
+                if mch.size !=0
                     break
-                if !empty(imft)
-                    var data : array<float>
-                    data |> reserve(1024)
-                    for i in range(1024)
-                        var sample : float
-                        if !next(imft, sample)
-                            break
-                        data |> push(sample)
-                    append_to_pcm(msid, data)
-            mch |> notify_and_release
-
-    def finalize
-        music_channel |> push_clone <| [[MusicCommand stop=true]]
-        music_channel |> join
-        unsafe(channel_remove(music_channel))
-        music_channel = null
-        stop(music_sid)
-    def override quit : void
-        glfwSetWindowShouldClose(window, GLFW_TRUE)
-    def override play_app_music ( data : array<uint8> ) : void
-        music_channel |> push_clone <| [[MusicCommand play <- clone_to_move(data)]]
+                var chunk : array<float>
+                chunk |> reserve(1024)
+                for i in range(1024)
+                    var sample : float
+                    if !next(imft, sample)
+                        break
+                    chunk |> push(sample)
+                if chunk |> length == 0
+                    break
+                append_to_pcm(music_sid, chunk)
+            while mch.size == 0
+                sleep(10u)
+            music_sid |> stop(1.)   // fade out
+            mch |> release
+            mch = null
     def override play_app_sound ( wave:array<float>; freq:int )
         play_sound_from_pcm(freq, 1, clone_to_move(wave))
     def override play_app_sound_2d ( pos:float2; radius:float; wave:array<float>; freq:int )

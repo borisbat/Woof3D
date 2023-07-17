@@ -100,21 +100,22 @@ def decodeIMFT ( var src : array<uint8>; hertz : int )
     return <- generator<float> [[:=src]] () <|
         var pchip = new Opl3Chip
         let llength = int(getUInt16(src, 0))
-        OPL3_Reset(*pchip, hertz)
         let delay_1 = hertz / 700
-        for i in range(llength/4)
-            let reg = src |> getUInt8(2+i*4+0)
-            let rdata = src |> getUInt8(2+i*4+1)
-            let delay = int(src |> getUInt16(2+i*4+2))
-            if reg != 0u8
-                OPL3_WriteReg ( *pchip, uint(reg), rdata )
-            if delay != 0
-                let samples = delay * delay_1 * 2
-                var tmp : array<uint16>
-                tmp |> resize_no_init(samples)
-                OPL3_GenerateStream(*pchip, tmp)
-                for tb in tmp
-                    yield float(int16(tb)) / 32768.0
+        while true
+            OPL3_Reset(*pchip, hertz)
+            for i in range(llength/4)
+                let reg = src |> getUInt8(2+i*4+0)
+                let rdata = src |> getUInt8(2+i*4+1)
+                let delay = int(src |> getUInt16(2+i*4+2))
+                if reg != 0u8
+                    OPL3_WriteReg ( *pchip, uint(reg), rdata )
+                if delay != 0
+                    let samples = delay * delay_1 * 2
+                    var tmp : array<uint16>
+                    tmp |> resize_no_init(samples)
+                    OPL3_GenerateStream(*pchip, tmp)
+                    for tb in tmp
+                        yield float(int16(tb)) / 32768.0
         return false
     finally
         unsafe
@@ -138,8 +139,7 @@ class OpenglApplication : woof3d::Application
         stop_the_music()
         if data |> length == 0
             return
-        unsafe
-            music_channel = channel_create()
+        music_channel = channel_create()
         var mch = music_channel
         var cch = get_audio_command_channel()
         let music_sid = generate_sound_sid()
@@ -149,13 +149,22 @@ class OpenglApplication : woof3d::Application
             play_sound_from_pcm_stream(MA_SAMPLE_RATE,2,music_sid)
             music_sid |> set_volume(0.)
             music_sid |> set_volume(1., 1.) // ramp-up
+            var status = lock_box_create()
+            music_sid |> set_status_update(status)
             var imft <- decodeIMFT(data, MA_SAMPLE_RATE)
             while true
                 if mch.size !=0
                     break
+                let t01sec = MA_SAMPLE_RATE * 2 / 10
+                var qlen = 0
+                status |> get <| $ ( chs:AudioChannelStatus# )
+                    qlen = chs.stream_que_length
+                if qlen > 3
+                    sleep(50u)
+                    continue
                 var chunk : array<float>
-                chunk |> reserve(1024)
-                for i in range(1024)
+                chunk |> reserve(t01sec)
+                for i in range(t01sec)
                     var sample : float
                     if !next(imft, sample)
                         break
@@ -168,6 +177,8 @@ class OpenglApplication : woof3d::Application
             music_sid |> stop(1.)   // fade out
             mch |> release
             mch = null
+            status |> release
+            status = null
     def override play_app_sound ( wave:array<float>; freq:int )
         play_sound_from_pcm(freq, 1, clone_to_move(wave))
     def override play_app_sound_2d ( pos:float2; radius:float; wave:array<float>; freq:int )

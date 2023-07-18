@@ -3,9 +3,9 @@
 The intent here is to have 100% 'safe' version of the classic game demo,
 while stressing the performance of the interpreter.
 
-Music is the only major exception. I've used digitized or PC sounds for they are very easy to decode.
-Adlib sounds and music require the full blown OPL3 integration and an appropriate music player.
-So I decided to go with more direct approach.
+I'm using OPL3 emulator to play Adlib sounds and music. Music is in fact decoded 'on the fly' and than given to dasAudio.
+
+The only exception is span rasterizer. With real interpreted version it goes up to about 20-30 msec from the native 2-3.
 
 How to integrate:
 

@@ -10,7 +10,7 @@ require daslib/algorithm
 require daslib/raster_boost
 require daslib/jobque_boost
 
-require audio/opl3
+require opl3
 
 // -------------------- global configuation --------------------
 

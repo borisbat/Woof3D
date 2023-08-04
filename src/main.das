@@ -11,7 +11,7 @@ require daslib/safe_addr
 require math
 require strings
 require audio/audio_boost
-require audio/opl3
+require opl3
 require rtti
 require daslib/jobque_boost
 require daslib/fio

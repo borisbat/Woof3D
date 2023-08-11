@@ -139,7 +139,7 @@ class OpenglApplication : woof3d::Application
         stop_the_music()
         if data |> length == 0
             return
-        music_channel = channel_create()
+        music_channel = unsafe(channel_create())
         var mch = music_channel
         var cch = get_audio_command_channel()
         let music_sid = generate_sound_sid()

@@ -139,7 +139,7 @@ class OpenglApplication : woof3d::Application
         stop_the_music()
         if data |> length == 0
             return
-        music_channel = channel_create()
+        music_channel = unsafe(channel_create())
         var mch = music_channel
         var cch = get_audio_command_channel()
         let music_sid = generate_sound_sid()
@@ -182,7 +182,8 @@ class OpenglApplication : woof3d::Application
     def override play_app_sound ( wave:array<float>; freq:int )
         play_sound_from_pcm(freq, 1, clone_to_move(wave))
     def override play_app_sound_2d ( pos:float2; radius:float; wave:array<float>; freq:int )
-        play_3d_sound_from_pcm(float3(pos,0.), radius, freq, 1, clone_to_move(wave))
+        let sid = play_3d_sound_from_pcm(float3(pos,0.), radius, freq, 1, clone_to_move(wave))
+        sid |> set_reverb_preset(ReverbPreset Generic)
     def override set_app_sound_position ( xy:float2; dxy:float2 )
         set_head_position(float3(xy,0.), float3(dxy,0.))
     def update_controls

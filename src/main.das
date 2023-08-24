@@ -182,7 +182,7 @@ class OpenglApplication : woof3d::Application
     def override play_app_sound ( wave:array<float>; freq:int )
         play_sound_from_pcm(freq, 1, clone_to_move(wave))
     def override play_app_sound_2d ( pos:float2; radius:float; wave:array<float>; freq:int )
-        let sid = play_3d_sound_from_pcm(float3(pos,0.), radius, freq, 1, clone_to_move(wave))
+        let sid = play_3d_sound_from_pcm(float3(pos,0.), inverse_distance_attenuation(radius), freq, 1, clone_to_move(wave))
         sid |> set_reverb_preset(ReverbPreset Generic)
     def override set_app_sound_position ( xy:float2; dxy:float2 )
         set_head_position(float3(xy,0.), float3(dxy,0.))

@@ -959,11 +959,11 @@ let LEVEL_FADE_TIME = 1.
 let LEVEL_FADE_FACTOR = 2. / LEVEL_FADE_TIME / 60.
 let DEFAULT_SPLASH_TIMER = 3.
 
-let PAIN_SOUND_RADIUS = 64.
-let SHOT_SOUND_RADIUS = 64.
-let AGRO_SOUND_RADIUS = 64.
+let PAIN_SOUND_RADIUS = 4.
+let SHOT_SOUND_RADIUS = 4.
+let AGRO_SOUND_RADIUS = 4.
 
-let DOOR_SOUND_RADIUS = 20.      // how far away door sound can be heard (in tiles)
+let DOOR_SOUND_RADIUS = 2.      // how far away door sound can be heard (in tiles)
 let DOOR_OPEN_SPEED = 2.0        // how fast door opens (in tiles per second)
 let DOOR_CLOSE_SPPED = 2.0       // how fast door closes (in tiles per second)
 let DOOR_STAYS_CLOSED = 3.0      // how long door stays closed (in seconds)

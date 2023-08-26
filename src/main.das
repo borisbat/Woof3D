@@ -102,7 +102,7 @@ def decodeIMFT ( var src : array<uint8>; hertz : int )
         let llength = int(getUInt16(src, 0))
         let delay_1 = hertz / 700
         while true
-            OPL3_Reset(*pchip, hertz)
+            OPL3_Reset(*pchip, uint(hertz))
             for i in range(llength/4)
                 let reg = src |> getUInt8(2+i*4+0)
                 let rdata = src |> getUInt8(2+i*4+1)

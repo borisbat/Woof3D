@@ -68,8 +68,8 @@ var application : Application?
 
 let USE_ADLIB = true
 let SOUND_SAMPLE_RATE = 7000
-let ADLIB_SAMPLE_RATE = 44100
-let MUSIC_SAMPLE_RATE = 44100
+let ADLIB_SAMPLE_RATE = 48000
+let MUSIC_SAMPLE_RATE = 48000
 
 let TOTAL_LEVELS = 60
 
@@ -457,7 +457,7 @@ def convertAdlibToWave ( src:array<uint8> | #; hertz:int )
     let ldata = int(getUInt32(src, 0))
     let instrument_offset = 6
     var data : array<uint16>
-    OPL3_Reset(chip, hertz)
+    OPL3_Reset(chip, uint(hertz))
     OPL3_WriteReg ( chip, 0x20, src[instrument_offset+0] )    // mChar
     OPL3_WriteReg ( chip, 0x40, src[instrument_offset+2] )    // mScale
     OPL3_WriteReg ( chip, 0x60, src[instrument_offset+4] )    // mAttack

@@ -110,50 +110,18 @@ def save_adlib_sound ( snd:AdlibSound; prefix:string; index:int; rate:int = ADLI
     static_assert(typeinfo(sizeof type<WavHeader>) == 44)
     let folder = "{WL6_FILES_ROOT}/SOUNDS"
     mkdir(folder)
-    let filename = "{folder}/{prefix}_{index}.wav"
+    let filename = "{folder}/{prefix}_{index}.aff"
     fopen(filename, "wb") <| $ ( file )
         if file == null
             return
-        let header = [[WavHeader
-            riff = [[uint8 'R'u8; 'I'u8; 'F'u8; 'F'u8]],
-            totalLength = uint(32 + length(snd.data)),
-            wave = [[uint8 'W'u8; 'A'u8; 'V'u8; 'E'u8; 'f'u8; 'm'u8; 't'u8; ' 'u8]],
-            lengthFormat = 16u,
-            dataType = uint16(1),
-            channelNumbers = uint16(1),
-            sampleRate = uint(rate),
-            bytesPerSecond = uint(rate) * 2u,
-            bytesPerSample = uint16(2),
-            bitsPerSample = uint16(16),
-            data = [[uint8 'd'u8; 'a'u8; 't'u8; 'a'u8]],
-            lengthData = uint(length(snd.data)) * 2u
-        ]]
-        file |> fwrite(header)
         file |> fwrite(snd.data)
 
-def save_adlib_music ( snd:AdlibSound; prefix:string; index:int; rate:int = ADLIB_SAMPLE_RATE )
+def save_adlib_music ( snd:AdlibMusic; prefix:string; index:int; rate:int = ADLIB_SAMPLE_RATE )
     static_assert(typeinfo(sizeof type<WavHeader>) == 44)
     let folder = "{WL6_FILES_ROOT}/MUSIC"
     mkdir(folder)
-    let filename = "{folder}/{prefix}_{index}.wav"
+    let filename = "{folder}/{prefix}_{index}.iff"
     fopen(filename, "wb") <| $ ( file )
-        if file == null
-            return
-        let header = [[WavHeader
-            riff = [[uint8 'R'u8; 'I'u8; 'F'u8; 'F'u8]],
-            totalLength = uint(32 + length(snd.data)),
-            wave = [[uint8 'W'u8; 'A'u8; 'V'u8; 'E'u8; 'f'u8; 'm'u8; 't'u8; ' 'u8]],
-            lengthFormat = 16u,
-            dataType = uint16(1),
-            channelNumbers = uint16(2),
-            sampleRate = uint(rate),
-            bytesPerSecond = uint(rate) * 2u * 2u,
-            bytesPerSample = uint16(2),
-            bitsPerSample = uint16(16),
-            data = [[uint8 'd'u8; 'a'u8; 't'u8; 'a'u8]],
-            lengthData = uint(length(snd.data)) * 2u
-        ]]
-        file |> fwrite(header)
         file |> fwrite(snd.data)
 
 def public save_pic ( pic:Picture; prefix:string; index:int )

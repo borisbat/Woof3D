@@ -8,9 +8,6 @@ require audio public
 
 require dasbind
 
-// due to licensign issues, i can't keep nuked opl3 in the daScript repo
-// i will convert it into a separate module, which uses DLL eventually
-// this is using stubs for now
 
 let OPL3_CHIP_SIZE = 20960
 

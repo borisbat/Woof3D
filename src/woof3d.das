@@ -1282,7 +1282,7 @@ def Animation ( SPRITES:array<int>; LOOP:bool=false; ORIENTABLE:bool=false; RATE
         rate = RATE
     return <- self
 
-def startAnimation ( var entity:Entity; ANIMATION:Animation? )
+def startAnimation ( var entity:Entity; var ANIMATION:Animation? )
     entity.animation = ANIMATION
     entity.spriteIndex = abs(entity.animation.sprites[0])
 
@@ -2099,7 +2099,7 @@ def setupLevel ( var index:int )
                 // todo: add bosses
                 var edx, edy : float
                 getEntityDirection(m1 & 3,edx,edy)
-                enemies |> push <| new [[Enemy
+                enemies |> push <| new [[Enemy()
                     pos = float2(x,y) + float2(0.5),
                     dir = float2(edx, edy),
                     category = Category enemy,
@@ -2450,7 +2450,7 @@ def updatePlayer
         let X = 34
         let Y = 61
         var category = EnemyCategory dog
-        enemies |> push <| new [[Enemy
+        enemies |> push <| new [[Enemy()
             pos = float2(X,Y) + float2(0.5),
             dir = float2(1,0),
             category = Category enemy,
@@ -3018,7 +3018,7 @@ def wolf3d_setGameMode ( mode:GameMode )
     gameMode = mode
     splashTimer = DEFAULT_SPLASH_TIMER
 
-def woof3d_main ( app:Application? )
+def woof3d_main ( var app:Application? )
     application = app
     InitFilesFirst()
     // setupLevel(0)
@@ -3027,7 +3027,7 @@ def woof3d_main ( app:Application? )
     wolf3d_setGameMode(GameMode loadScreen0)
 
 def woof3d_update ( dt:float; var backbuffer:Bitmap8# )
-    backbuffer.flags |= RasterFlags column_major
+    backbuffer.flags |= RasterFlags.column_major
     if gameMode == GameMode loadScreen0
         loadScreen0(dt, backbuffer)
     elif gameMode == GameMode loadScreen1
